@@ -1,7 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-   
+  <!-- ✅ Firebase SDKs (v8) MUST be in <head> -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <!-- ✅ Your meta + title -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory Manager</title>
+
+  <!-- Optional: your CSS, Bootstrap, etc. -->
+</head>
+
+<body>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2332,62 +2344,42 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeProtection();
         });
-        <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
-<script>
-  // ✅ Firebase config — replace with your actual values
+            </script>
   const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "invshakti.firebaseapp.com",
-    databaseURL: "https://invshakti-default-rtdb.firebaseio.com",
-    projectId: "invshakti",
-    storageBucket: "invshakti.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "YOUR_KEY",
+    authDomain: "invbfs.firebaseapp.com",
+    databaseURL: "https://invbfs-default-rtdb.firebaseio.com",
+    projectId: "invbfs",
+    storageBucket: "invbfs.appspot.com",
+    messagingSenderId: "183500505178",
+    appId: "1:183500505178:web:0ca737b5d200005bbc9863"
   };
 
-  // ✅ Initialize Firebase
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
-
-  // ✅ Inventory array
-  let products = [];
-
-  // ✅ Load products from Firebase on page load
-  function loadProductsFromFirebase() {
-    db.ref("products").on("value", (snapshot) => {
-      products = snapshot.val() || [];
-      console.log("Loaded products:", products);
-
-      // Optional: refresh your table here
-      // renderTable(products);
-    });
-  }
-
-  window.addEventListener("load", loadProductsFromFirebase);
-
-  // ✅ Save products to Firebase
-  function saveProductsToFirebase() {
-    db.ref("products").set(products);
-    console.log("Saved products to Firebase:", products);
-  }
-
-  // ✅ Example: Add a product (call this when your Add button is clicked)
-  function addProduct(name, price) {
-    const newProduct = {
-      name: name,
-      price: price,
-      timestamp: Date.now()
-    };
-
-    products.push(newProduct);
-    saveProductsToFirebase();
-  }
-
-  // ✅ Example usage — you can wire this to a button
-  // addProduct("Apple", 1.99);
 </script>
+  <script>
+    /* Your existing functions EXACTLY as they are:
+       - showLoading()
+       - initializeApp()
+       - displayProducts()
+       - renderCounting()
+       - renderSummary()
+       - renderAnalysis()
+       - renderArchive()
+       - renderAdmin()
+       - initializeProtection()
+       - loadProductsFromFirebase()
+       - saveProductsToFirebase()
+       - addProduct()
+       - etc.
+    */
+
+    // Example:
+    // document.addEventListener("DOMContentLoaded", () => {
+    //   initializeProtection();
+    // });
+  </script>
 
 </body>
 </html>
