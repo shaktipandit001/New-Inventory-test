@@ -1,18 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
 <head>
-  <!-- ✅ Firebase SDKs (v8) MUST be in <head> -->
+  <!-- Firebase v8 SDKs -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
-  <!-- ✅ Your meta + title -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Inventory Manager</title>
-
-  <!-- Optional: your CSS, Bootstrap, etc. -->
 </head>
-
 <body>
 
     <meta charset="UTF-8">
@@ -2344,9 +2338,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeProtection();
         });
-            </script>
+ <!-- 1. Firebase config -->
+</script>
   const firebaseConfig = {
-    apiKey: "YOUR_KEY",
+    apiKey: "AIzaSyCvENxXAfEqgegtr5RFIYcolV_eURTcbzA",
     authDomain: "invbfs.firebaseapp.com",
     databaseURL: "https://invbfs-default-rtdb.firebaseio.com",
     projectId: "invbfs",
@@ -2358,28 +2353,30 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 </script>
-  <script>
-    /* Your existing functions EXACTLY as they are:
-       - showLoading()
-       - initializeApp()
-       - displayProducts()
-       - renderCounting()
-       - renderSummary()
-       - renderAnalysis()
-       - renderArchive()
-       - renderAdmin()
-       - initializeProtection()
-       - loadProductsFromFirebase()
-       - saveProductsToFirebase()
-       - addProduct()
-       - etc.
-    */
 
-    // Example:
-    // document.addEventListener("DOMContentLoaded", () => {
-    //   initializeProtection();
-    // });
-  </script>
+<!-- ✅ Your full app logic -->
+<script>
+  // Paste ALL your real functions here:
+  // showLoading()
+  // initializeApp()
+  // initializeProtection()
+  // loadProductsFromFirebase()
+  // saveProductsToFirebase()
+  // addProduct()
+  // displayProducts()
+  // renderCounting()
+  // renderSummary()
+  // renderAnalysis()
+  // renderArchive()
+  // renderAdmin()
+  // etc.
+
+  // And your startup call:
+  document.addEventListener("DOMContentLoaded", () => {
+    initializeProtection();
+    initializeApp();
+  });
+</script>
 
 </body>
 </html>
