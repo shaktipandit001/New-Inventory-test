@@ -1,3 +1,5 @@
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <!-- Firebase v8 SDKs -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -9,9 +11,6 @@
 </head>
 <body>
 
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Tracker - Professional System</title>
     <style>
         * {
             margin: 0;
@@ -1082,7 +1081,7 @@
         ];
         let users = JSON.parse(localStorage.getItem('inventoryUsers')) || [
             { username: 'admin', password: 'admin123', role: 'admin', locations: ['ostbahnhof', 'potsdam'], lastLogin: null },
-            { username: 'rakesh', password: 'rakesh', role: 'inventory', locations: ['ostbahnhof'], lastLogin: null }
+            { username: 'user1', password: 'user123', role: 'inventory', locations: ['ostbahnhof'], lastLogin: null }
         ];
         let monthlyData = JSON.parse(localStorage.getItem('monthlyInventoryData')) || {};
         let currentUser = null;
@@ -2338,8 +2337,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeProtection();
         });
- 
-<!-- Firebase + App Logic -->
+    <!-- Firebase + App Logic -->
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyCvENxXAfEqgegtr5RFIYcolV_eURTcbzA",
@@ -2369,6 +2367,9 @@
 
 <!-- Button MUST be inside <body> -->
 <button onclick="checkProtectionCode()">Unlock System</button>
+
+</body>
+</html>
 
 </body>
 </html>
