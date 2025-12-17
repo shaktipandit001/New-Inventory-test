@@ -2402,21 +2402,22 @@
             document.getElementById('inventoryProgress').style.width = `${progressPercent}%`;
         }
 
-        // Initialize protection when page loads
+                      // Initialize protection when page loads
         document.addEventListener('DOMContentLoaded', function() {
             initializeProtection();
         });
     </script>
 
+    <!-- Firebase Initialization -->
     <script>
         const firebaseConfig = {
-            apiKey: "AIzaSyCvENxXAfEqegtr5RFlYcoIv_eURTcbzA",
+            apiKey: "AIzaSyCvENxXAfEqgegtr5RFIYcolV_eURTcbzA",
             authDomain: "invbfs.firebaseapp.com",
             databaseURL: "https://invbfs-default-rtdb.firebaseio.com",
             projectId: "invbfs",
             storageBucket: "invbfs.appspot.com",
             messagingSenderId: "183500505178",
-            appId: "1:183500505178:web:0ca737b5d20005bbc9863"
+            appId: "1:183500505178:web:0ca737b5d200005bbc9863"
         };
 
         firebase.initializeApp(firebaseConfig);
