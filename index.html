@@ -1090,9 +1090,6 @@
 
         // Initialize the app
         function init() {
-            if (products.length === 0) {
-                importAllProducts();
-            }
             setupLocationSelector();
             updateCategoryFilter();
             setupYearMonthSelectors();
@@ -1621,9 +1618,9 @@
             localStorage.setItem('monthlyInventoryData', JSON.stringify(monthlyData));
         }
 
-        // Import ALL products including Retail and Gemüse
+        // Import products function - EMPTY, you can add your own products later
         function importAllProducts() {
-            products = [
+             products = [
                 // Your existing Trankgourmet products
                 { id: '382224', name: 'B1774_Porridgebecher 500St', unit: 'stuck', category: 'Verbrauch', price: 0.075 },
                 { id: '252437', name: 'B1774_Deckel Porridge Be.500St', unit: 'stuck', category: 'Verbrauch', price: 0.071 },
@@ -1902,7 +1899,7 @@
             });
         }
 
-        // Display counting products - FIXED: Properly uses current location and month
+        // Display counting products
         function displayCountingProducts() {
             const tbody = document.getElementById('countingList');
             tbody.innerHTML = '';
@@ -1920,10 +1917,8 @@
                 return;
             }
             
-            // KEY FIX: Always use currentLocation and currentMonth
             const key = `${currentLocation}|${currentMonth}`;
             
-            // Make sure data exists for this location/month
             if (!monthlyData[key]) {
                 monthlyData[key] = {
                     counts: {},
@@ -1980,13 +1975,12 @@
             document.getElementById('totalCounted').textContent = formatDecimal(totalCounted);
         }
 
-        // Quantity functions - FIXED: Always use currentLocation and currentMonth
+        // Quantity functions
         function incrementCount(productId, increment = 1) {
             if (isCountingClosed()) return;
             
             const key = `${currentLocation}|${currentMonth}`;
             
-            // Make sure data exists
             if (!monthlyData[key]) {
                 monthlyData[key] = {
                     counts: {},
@@ -2008,7 +2002,6 @@
             
             const key = `${currentLocation}|${currentMonth}`;
             
-            // Make sure data exists
             if (!monthlyData[key]) {
                 monthlyData[key] = {
                     counts: {},
@@ -2033,7 +2026,6 @@
             if (numValue >= 0) {
                 const key = `${currentLocation}|${currentMonth}`;
                 
-                // Make sure data exists
                 if (!monthlyData[key]) {
                     monthlyData[key] = {
                         counts: {},
@@ -2289,7 +2281,7 @@
             link.click();
             document.body.removeChild(link);
         }
-
+        
         // Analysis functions
         function updateAnalysis() {
             const key = `${currentLocation}|${currentMonth}`;
@@ -2337,39 +2329,21 @@
         document.addEventListener('DOMContentLoaded', function() {
             initializeProtection();
         });
-    <!-- Firebase + App Logic -->
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyCvENxXAfEqgegtr5RFIYcolV_eURTcbzA",
-    authDomain: "invbfs.firebaseapp.com",
-    databaseURL: "https://invbfs-default-rtdb.firebaseio.com",
-    projectId: "invbfs",
-    storageBucket: "invbfs.appspot.com",
-    messagingSenderId: "183500505178",
-    appId: "1:183500505178:web:0ca737b5d200005bbc9863"
-  };
+    </script>
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCvENxXAfEqegtr5RFlYcoIv_eURTcbzA",
+            authDomain: "invbfs.firebaseapp.com",
+            databaseURL: "https://invbfs-default-rtdb.firebaseio.com",
+            projectId: "invbfs",
+            storageBucket: "invbfs.appspot.com",
+            messagingSenderId: "183500505178",
+            appId: "1:183500505178:web:0ca737b5d20005bbc9863"
+        };
 
-  function initializeProtection() {
-    console.log("Protection initialized.");
-  }
-
-  function checkProtectionCode() {
-    alert("System unlocked.");
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    initializeProtection();
-  });
-</script>
-
-<!-- Button MUST be inside <body> -->
-<button onclick="checkProtectionCode()">Unlock System</button>
-
-</body>
-</html>
-
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+    </script>
 </body>
 </html>
