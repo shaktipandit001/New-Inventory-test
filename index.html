@@ -705,6 +705,7 @@
             <button class="tab-button" onclick="openTab('analysis')">Analysis</button>
             <button class="tab-button" onclick="openTab('summary')">Count Summary</button>
             <button class="tab-button" onclick="openTab('archive')">Monthly Archive</button>
+            <button class="tab-button admin-tab" onclick="openTab('activity')" style="display: none;">Activity Log</button>
             <button class="tab-button admin-tab" onclick="openTab('admin')" style="display: none;">Admin Panel</button>
         </div>
 
@@ -853,6 +854,78 @@
                     </thead>
                     <tbody id="archiveList"></tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Activity Log Tab -->
+        <div id="activity" class="tab-content">
+            <div class="section admin-only">
+                <h2>📝 Activity Log - User Actions Tracker</h2>
+                <div class="filters">
+                    <select id="activityUserFilter" onchange="displayActivityLog()">
+                        <option value="all">All Users</option>
+                    </select>
+                    <select id="activityActionFilter" onchange="displayActivityLog()">
+                        <option value="all">All Actions</option>
+                        <option value="login">User Login</option>
+                        <option value="logout">User Logout</option>
+                        <option value="count_update">Quantity Change</option>
+                        <option value="product_add">Product Added</option>
+                        <option value="product_edit">Product Edited</option>
+                        <option value="product_delete">Product Deleted</option>
+                        <option value="user_add">User Added</option>
+                        <option value="user_edit">User Edited</option>
+                        <option value="user_delete">User Deleted</option>
+                        <option value="location_add">Location Added</option>
+                        <option value="count_reset">Counts Reset</option>
+                        <option value="month_create">New Month Created</option>
+                        <option value="data_export">Data Exported</option>
+                    </select>
+                    <select id="activityTimeFilter" onchange="displayActivityLog()">
+                        <option value="today">Today</option>
+                        <option value="yesterday">Yesterday</option>
+                        <option value="week">Last 7 Days</option>
+                        <option value="month">Last 30 Days</option>
+                        <option value="all">All Time</option>
+                    </select>
+                    <button class="quantity-btn" onclick="exportActivityLog()">Export Log</button>
+                    <button class="admin-btn" onclick="clearActivityLog()" style="margin-left: auto;">Clear Log</button>
+                </div>
+                
+                <div class="stats" style="margin-bottom: 20px;">
+                    <div class="stat-box">
+                        <div class="stat-value" id="totalActivities">0</div>
+                        <div class="stat-label">Total Activities</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="todayActivities">0</div>
+                        <div class="stat-label">Today</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="activeUsersCount">0</div>
+                        <div class="stat-label">Active Users</div>
+                    </div>
+                </div>
+                
+                <div style="max-height: 600px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px;">
+                    <table>
+                        <thead style="position: sticky; top: 0; background: white; z-index: 10;">
+                            <tr>
+                                <th>Time</th>
+                                <th>User (Role)</th>
+                                <th>Action</th>
+                                <th>Details</th>
+                                <th>Location</th>
+                                <th>Month</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activityLogList"></tbody>
+                    </table>
+                </div>
+                
+                <div style="margin-top: 20px; text-align: center; color: #666; font-size: 0.9rem;">
+                    <p>📊 <strong>Activity Tracking Active</strong> - All user actions are being recorded</p>
+                </div>
             </div>
         </div>
 
@@ -1162,6 +1235,49 @@
         let currentMonth = '';
         let firebaseInitialized = false;
 
+        // ==================== ACTIVITY TRACKING ====================
+        let activityLogs = JSON.parse(localStorage.getItem('inventoryActivityLogs')) || [];
+
+        // Log user activity
+        function logActivity(action, details = {}) {
+            if (!currentUser) return;
+            
+            const activity = {
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                timestamp: new Date().toISOString(),
+                user: currentUser.username,
+                userRole: currentUser.role,
+                location: currentLocation,
+                month: currentMonth,
+                action: action,
+                details: details,
+                ip: 'tracked'
+            };
+            
+            console.log('Activity logged:', activity);
+            
+            // Save to Firebase if initialized
+            if (firebaseInitialized) {
+                try {
+                    firebase.database().ref(`activity_logs/${activity.id}`).set(activity)
+                        .then(() => console.log('Activity saved to Firebase'))
+                        .catch(error => console.error('Firebase save error:', error));
+                } catch (error) {
+                    console.error('Firebase error:', error);
+                }
+            }
+            
+            // Save locally
+            activityLogs.unshift(activity); // Add to beginning
+            if (activityLogs.length > 1000) activityLogs = activityLogs.slice(0, 1000); // Keep only last 1000
+            localStorage.setItem('inventoryActivityLogs', JSON.stringify(activityLogs));
+            
+            // Update display if on activity tab
+            if (document.getElementById('activity')?.classList.contains('active')) {
+                displayActivityLog();
+            }
+        }
+
         // Initialize the app
         function init() {
             console.log('Initializing inventory app...');
@@ -1229,6 +1345,13 @@
                 user.lastLogin = new Date().toISOString();
                 saveUsers();
                 
+                // Log login activity
+                logActivity('login', { 
+                    username: username, 
+                    role: user.role,
+                    locations: user.locations 
+                });
+                
                 document.getElementById('loginScreen').style.display = 'none';
                 document.getElementById('app').style.display = 'block';
                 
@@ -1243,6 +1366,11 @@
         }
 
         function logout() {
+            // Log logout activity
+            if (currentUser) {
+                logActivity('logout', { username: currentUser.username });
+            }
+            
             console.log('Logging out...');
             currentUser = null;
             firebaseInitialized = false;
@@ -1263,7 +1391,11 @@
             document.getElementById('productManagement').style.display = isAdmin ? 'block' : 'none';
             document.getElementById('locationManagement').style.display = isAdmin ? 'block' : 'none';
             document.getElementById('productActionsHeader').style.display = isAdmin ? 'table-cell' : 'none';
-            document.querySelectorAll('.admin-tab').forEach(el => el.style.display = isAdmin ? 'block' : 'none');
+            
+            // Show admin tabs
+            document.querySelectorAll('.admin-tab').forEach(el => {
+                el.style.display = isAdmin ? 'block' : 'none';
+            });
             
             updateLocationSelector();
         }
@@ -1376,6 +1508,14 @@
             };
             
             saveMonthlyData();
+            
+            // Log new month creation
+            logActivity('month_create', {
+                location: currentLocation,
+                month: currentMonth,
+                createdBy: currentUser.username
+            });
+            
             updateUI();
             alert(`New counting period created for ${formatMonthDisplay(currentMonth)}`);
         }
@@ -1509,21 +1649,60 @@
                 return;
             }
             
-            if (products.find(p => p.id === id)) {
-                alert('Product ID already exists');
-                return;
+            const existingProduct = products.find(p => p.id === id);
+            
+            if (existingProduct) {
+                // Update existing product
+                const oldData = { ...existingProduct };
+                existingProduct.name = name;
+                existingProduct.category = category;
+                existingProduct.unit = unit;
+                existingProduct.price = price;
+                
+                // Log edit activity
+                logActivity('product_edit', {
+                    productId: id,
+                    changes: {
+                        name: { old: oldData.name, new: name },
+                        category: { old: oldData.category, new: category },
+                        unit: { old: oldData.unit, new: unit },
+                        price: { old: oldData.price, new: price }
+                    }
+                });
+            } else {
+                // Add new product
+                products.push({ id, name, category, unit, price });
+                
+                // Log add activity
+                logActivity('product_add', {
+                    productId: id,
+                    productName: name,
+                    category: category,
+                    unit: unit,
+                    price: price
+                });
             }
             
-            products.push({ id, name, category, unit, price });
             saveProducts();
             closeModal('productModal');
             displayProducts();
             updateCategoryFilter();
-            alert('Product added successfully');
+            alert(existingProduct ? 'Product updated successfully' : 'Product added successfully');
         }
 
         function deleteProduct(productId) {
-            if (confirm('Are you sure you want to delete this product?')) {
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+            
+            if (confirm(`Are you sure you want to delete "${product.name}"?`)) {
+                // Log delete activity
+                logActivity('product_delete', {
+                    productId: productId,
+                    productName: product.name,
+                    category: product.category,
+                    price: product.price
+                });
+                
                 products = products.filter(p => p.id !== productId);
                 saveProducts();
                 displayProducts();
@@ -1534,6 +1713,532 @@
                 });
                 saveMonthlyData();
             }
+        }
+
+        function editProduct(productId) {
+            const product = products.find(p => p.id === productId);
+            if (product) {
+                document.getElementById('productModalTitle').textContent = 'Edit Product';
+                document.getElementById('modalProductId').value = product.id;
+                document.getElementById('modalProductId').disabled = true;
+                document.getElementById('modalProductName').value = product.name;
+                document.getElementById('modalProductCategory').value = product.category;
+                document.getElementById('modalProductUnit').value = product.unit;
+                document.getElementById('modalProductPrice').value = product.price;
+                document.getElementById('productModal').style.display = 'flex';
+            }
+        }
+
+        function updateCategoryFilter() {
+            const filter1 = document.getElementById('categoryFilter');
+            const filter2 = document.getElementById('countingCategoryFilter');
+            filter1.innerHTML = filter2.innerHTML = '<option value="">All Categories</option>';
+            const categories = [...new Set(products.map(p => p.category))].sort();
+            categories.forEach(category => {
+                const option1 = document.createElement('option');
+                option1.value = category;
+                option1.textContent = category;
+                filter1.appendChild(option1);
+                const option2 = document.createElement('option');
+                option2.value = category;
+                option2.textContent = category;
+                filter2.appendChild(option2);
+            });
+        }
+
+        // Display counting products - FIXED: Properly uses current location and month
+        function displayCountingProducts() {
+            const tbody = document.getElementById('countingList');
+            tbody.innerHTML = '';
+            const categoryFilter = document.getElementById('countingCategoryFilter').value;
+            const searchTerm = document.getElementById('countingSearch').value.toLowerCase();
+            
+            let filteredProducts = products;
+            if (categoryFilter) filteredProducts = filteredProducts.filter(p => p.category === categoryFilter);
+            if (searchTerm) filteredProducts = filteredProducts.filter(p => 
+                p.name.toLowerCase().includes(searchTerm) || p.id.toString().includes(searchTerm));
+            
+            if (filteredProducts.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = `<td colspan="6" style="text-align: center;">No products found</td>`;
+                return;
+            }
+            
+            // KEY FIX: Always use currentLocation and currentMonth
+            const key = `${currentLocation}|${currentMonth}`;
+            
+            // Make sure data exists for this location/month
+            if (!monthlyData[key]) {
+                monthlyData[key] = {
+                    counts: {},
+                    created: new Date().toISOString(),
+                    status: 'open'
+                };
+                saveMonthlyData();
+            }
+            
+            const currentCounts = monthlyData[key].counts || {};
+            const isReadOnly = monthlyData[key].status === 'closed';
+            
+            let currentCategory = '';
+            filteredProducts.sort((a, b) => {
+                if (a.category !== b.category) return a.category.localeCompare(b.category);
+                return a.name.localeCompare(b.name);
+            }).forEach(product => {
+                if (product.category !== currentCategory) {
+                    currentCategory = product.category;
+                    const headerRow = tbody.insertRow();
+                    headerRow.className = 'category-header';
+                    headerRow.innerHTML = `<td colspan="6">${currentCategory}</td>`;
+                }
+                const count = currentCounts[product.id] || 0;
+                const totalValue = count * product.price;
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${product.name}</td>
+                    <td>${product.category}</td>
+                    <td>${product.unit}</td>
+                    <td>€${product.price.toFixed(2)}</td>
+                    <td>
+                        <div class="quantity-controls">
+                            <button class="quantity-btn" onclick="decrementCount('${product.id}', 1)" ${isReadOnly ? 'disabled' : ''}>-1</button>
+                            <button class="decimal-btn" onclick="decrementCount('${product.id}', 0.1)" ${isReadOnly ? 'disabled' : ''}>-0.1</button>
+                            <input type="number" class="quantity-input" value="${formatDecimal(count)}" 
+                                   onchange="setManualCount('${product.id}', this.value)" 
+                                   onblur="setManualCount('${product.id}', this.value)"
+                                   min="0" step="0.01" placeholder="0.00" ${isReadOnly ? 'disabled' : ''}>
+                            <button class="decimal-btn" onclick="incrementCount('${product.id}', 0.1)" ${isReadOnly ? 'disabled' : ''}>+0.1</button>
+                            <button class="quantity-btn" onclick="incrementCount('${product.id}', 1)" ${isReadOnly ? 'disabled' : ''}>+1</button>
+                        </div>
+                        <div class="custom-increment">
+                            <input type="number" class="custom-increment-input" id="customIncrement-${product.id}" 
+                                   placeholder="0.00" step="0.01" min="0.01" ${isReadOnly ? 'disabled' : ''}>
+                            <button class="custom-increment-btn" onclick="applyCustomIncrement('${product.id}')" ${isReadOnly ? 'disabled' : ''}>Apply</button>
+                        </div>
+                    </td>
+                    <td>€${totalValue.toFixed(2)}</td>
+                `;
+            });
+            
+            const totalCounted = Object.values(currentCounts).reduce((sum, count) => sum + parseFloat(count), 0);
+            document.getElementById('totalCounted').textContent = formatDecimal(totalCounted);
+        }
+
+        // Quantity functions - FIXED: Always use currentLocation and currentMonth
+        function incrementCount(productId, increment = 1) {
+            if (isCountingClosed()) return;
+            
+            const key = `${currentLocation}|${currentMonth}`;
+            
+            // Make sure data exists
+            if (!monthlyData[key]) {
+                monthlyData[key] = {
+                    counts: {},
+                    created: new Date().toISOString(),
+                    status: 'open'
+                };
+            }
+            
+            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
+            const product = products.find(p => p.id === productId);
+            
+            monthlyData[key].counts[productId] = currentCount + increment;
+            saveMonthlyData();
+            
+            // Log activity
+            logActivity('count_update', {
+                productId: productId,
+                productName: product ? product.name : 'Unknown',
+                change: increment,
+                previousCount: currentCount,
+                newCount: currentCount + increment,
+                location: currentLocation,
+                month: currentMonth
+            });
+            
+            displayCountingProducts();
+            updateSummary();
+            updateAnalysis();
+        }
+
+        function decrementCount(productId, decrement = 1) {
+            if (isCountingClosed()) return;
+            
+            const key = `${currentLocation}|${currentMonth}`;
+            
+            // Make sure data exists
+            if (!monthlyData[key]) {
+                monthlyData[key] = {
+                    counts: {},
+                    created: new Date().toISOString(),
+                    status: 'open'
+                };
+            }
+            
+            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
+            const newCount = Math.max(0, currentCount - decrement);
+            const product = products.find(p => p.id === productId);
+            
+            monthlyData[key].counts[productId] = newCount;
+            saveMonthlyData();
+            
+            // Log activity
+            logActivity('count_update', {
+                productId: productId,
+                productName: product ? product.name : 'Unknown',
+                change: -decrement,
+                previousCount: currentCount,
+                newCount: newCount,
+                location: currentLocation,
+                month: currentMonth
+            });
+            
+            displayCountingProducts();
+            updateSummary();
+            updateAnalysis();
+        }
+
+        function setManualCount(productId, value) {
+            if (isCountingClosed()) return;
+            
+            const numValue = parseFloat(value) || 0;
+            if (numValue >= 0) {
+                const key = `${currentLocation}|${currentMonth}`;
+                const currentCount = parseFloat(monthlyData[key]?.counts[productId]) || 0;
+                const product = products.find(p => p.id === productId);
+                
+                // Make sure data exists
+                if (!monthlyData[key]) {
+                    monthlyData[key] = {
+                        counts: {},
+                        created: new Date().toISOString(),
+                        status: 'open'
+                    };
+                }
+                
+                monthlyData[key].counts[productId] = numValue;
+                saveMonthlyData();
+                
+                // Log activity if count changed
+                if (currentCount !== numValue) {
+                    logActivity('count_update', {
+                        productId: productId,
+                        productName: product ? product.name : 'Unknown',
+                        change: numValue - currentCount,
+                        previousCount: currentCount,
+                        newCount: numValue,
+                        location: currentLocation,
+                        month: currentMonth
+                    });
+                }
+                
+                displayCountingProducts();
+                updateSummary();
+                updateAnalysis();
+            }
+        }
+
+        function applyCustomIncrement(productId) {
+            if (isCountingClosed()) return;
+            
+            const input = document.getElementById(`customIncrement-${productId}`);
+            const value = parseFloat(input.value);
+            if (!isNaN(value) && value > 0) {
+                incrementCount(productId, value);
+                input.value = '';
+            }
+        }
+
+        function isCountingClosed() {
+            const key = `${currentLocation}|${currentMonth}`;
+            if (monthlyData[key]?.status === 'closed') {
+                alert('Counting period is closed. No further edits allowed.');
+                return true;
+            }
+            return false;
+        }
+
+        function formatDecimal(value) {
+            const num = parseFloat(value);
+            return num % 1 === 0 ? num.toString() : num.toFixed(2);
+        }
+
+        // Update summary
+        function updateSummary() {
+            const key = `${currentLocation}|${currentMonth}`;
+            const currentCounts = monthlyData[key]?.counts || {};
+            
+            const totalCounted = Object.values(currentCounts).reduce((sum, count) => sum + parseFloat(count), 0);
+            const categorySummary = document.getElementById('categorySummary');
+            categorySummary.innerHTML = '';
+            const categories = {};
+            
+            products.forEach(product => {
+                if (!categories[product.category]) categories[product.category] = { count: 0, value: 0 };
+                const count = parseFloat(currentCounts[product.id]) || 0;
+                categories[product.category].count += count;
+                categories[product.category].value += count * product.price;
+            });
+            
+            Object.keys(categories).sort().forEach(category => {
+                const data = categories[category];
+                if (data.count > 0) {
+                    const row = document.createElement('div');
+                    row.className = 'summary-row';
+                    row.innerHTML = `<span>${category}:</span><span>${formatDecimal(data.count)} items (€${data.value.toFixed(2)})</span>`;
+                    categorySummary.appendChild(row);
+                }
+            });
+            
+            let totalItems = 0, totalValue = 0;
+            Object.keys(currentCounts).forEach(productId => {
+                const product = products.find(p => p.id == productId);
+                if (product) {
+                    totalItems += parseFloat(currentCounts[productId]);
+                    totalValue += parseFloat(currentCounts[productId]) * product.price;
+                }
+            });
+            
+            document.getElementById('totalItemsCounted').textContent = formatDecimal(totalItems);
+            document.getElementById('totalCountedValue').textContent = `€${totalValue.toFixed(2)}`;
+        }
+
+        function resetCurrentCounts() {
+            if (isCountingClosed()) return;
+            
+            if (confirm('Are you sure you want to reset all counts for the current period?')) {
+                const key = `${currentLocation}|${currentMonth}`;
+                const oldCounts = { ...monthlyData[key].counts };
+                
+                monthlyData[key].counts = {};
+                saveMonthlyData();
+                
+                // Log reset activity
+                logActivity('count_reset', {
+                    location: currentLocation,
+                    month: currentMonth,
+                    resetItems: Object.keys(oldCounts).length,
+                    resetBy: currentUser.username
+                });
+                
+                displayCountingProducts();
+                updateSummary();
+                updateAnalysis();
+            }
+        }
+
+        // Filter functions
+        function filterProducts() { displayProducts(); }
+        function filterCountingProducts() { displayCountingProducts(); }
+
+        // Archive functions
+        function displayArchive() {
+            const locationFilter = document.getElementById('archiveLocationFilter').value;
+            const yearFilter = document.getElementById('archiveYearFilter').value;
+            const tbody = document.getElementById('archiveList');
+            tbody.innerHTML = '';
+            
+            const locationSelect = document.getElementById('archiveLocationFilter');
+            locationSelect.innerHTML = '<option value="all">All Locations</option>';
+            locations.filter(l => l.active).forEach(location => {
+                const option = document.createElement('option');
+                option.value = location.id;
+                option.textContent = location.name;
+                locationSelect.appendChild(option);
+            });
+            
+            const years = new Set();
+            Object.keys(monthlyData).forEach(key => {
+                const [location, month] = key.split('|');
+                const year = month.split('-')[0];
+                years.add(year);
+            });
+            const yearSelect = document.getElementById('archiveYearFilter');
+            yearSelect.innerHTML = '<option value="all">All Years</option>';
+            Array.from(years).sort().reverse().forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearSelect.appendChild(option);
+            });
+            
+            const archiveEntries = [];
+            Object.keys(monthlyData).forEach(key => {
+                const [location, month] = key.split('|');
+                const year = month.split('-')[0];
+                
+                if (locationFilter !== 'all' && location !== locationFilter) return;
+                if (yearFilter !== 'all' && year !== yearFilter) return;
+                
+                const data = monthlyData[key];
+                let totalItems = 0, totalValue = 0;
+                Object.keys(data.counts).forEach(productId => {
+                    const product = products.find(p => p.id == productId);
+                    if (product) {
+                        totalItems += parseFloat(data.counts[productId]);
+                        totalValue += parseFloat(data.counts[productId]) * product.price;
+                    }
+                });
+                
+                archiveEntries.push({
+                    key: key,
+                    location: location,
+                    month: month,
+                    totalItems: totalItems,
+                    totalValue: totalValue,
+                    status: data.status,
+                    created: data.created
+                });
+            });
+            
+            archiveEntries.sort((a, b) => b.month.localeCompare(a.month));
+            
+            if (archiveEntries.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = `<td colspan="6" style="text-align: center;">No archive data found</td>`;
+                return;
+            }
+            
+            archiveEntries.forEach(entry => {
+                const row = tbody.insertRow();
+                row.innerHTML = `
+                    <td>${formatMonthDisplay(entry.month)}</td>
+                    <td>${getLocationDisplayName(entry.location)}</td>
+                    <td>${formatDecimal(entry.totalItems)}</td>
+                    <td>€${entry.totalValue.toFixed(2)}</td>
+                    <td><span class="${entry.status === 'open' ? 'status-open' : 'status-closed'}" style="padding: 4px 8px; border-radius: 3px;">${entry.status.toUpperCase()}</span></td>
+                    <td>
+                        <button class="decimal-btn" onclick="viewArchive('${entry.key}')">View</button>
+                    </td>
+                `;
+            });
+        }
+
+        function viewArchive(key) {
+            const [location, month] = key.split('|');
+            currentLocation = location;
+            currentMonth = month;
+            document.getElementById('yearSelect').value = month.split('-')[0];
+            updateMonthOptions();
+            document.getElementById('monthSelect').value = currentMonth;
+            
+            document.querySelectorAll('.location-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent === getLocationDisplayName(location)) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            updateUI();
+            openTab('counting');
+        }
+
+        // Export functions
+        function exportAllData() {
+            const data = {
+                products: products,
+                locations: locations,
+                users: users,
+                monthlyData: monthlyData,
+                exported: new Date().toISOString()
+            };
+            
+            exportToExcel(data);
+            
+            // Log export activity
+            logActivity('data_export', {
+                type: 'full_export',
+                productsCount: products.length,
+                locationsCount: locations.length,
+                usersCount: users.length,
+                monthlyDataCount: Object.keys(monthlyData).length
+            });
+        }
+
+        function exportToExcel(data) {
+            let csvContent = "Inventory System Export\n";
+            csvContent += "Generated: " + new Date().toLocaleString() + "\n\n";
+            
+            csvContent += "PRODUCTS\n";
+            csvContent += "ID,Name,Category,Unit,Price\n";
+            data.products.forEach(product => {
+                csvContent += `${product.id},"${product.name}",${product.category},${product.unit},${product.price}\n`;
+            });
+            
+            csvContent += "\n\nLOCATIONS\n";
+            csvContent += "ID,Name,Active\n";
+            data.locations.forEach(location => {
+                csvContent += `${location.id},"${location.name}",${location.active}\n`;
+            });
+            
+            csvContent += "\n\nMONTHLY DATA\n";
+            csvContent += "Location|Month,Status,Created,Total Items,Total Value\n";
+            Object.keys(data.monthlyData).forEach(key => {
+                const entry = data.monthlyData[key];
+                let totalItems = 0;
+                let totalValue = 0;
+                Object.keys(entry.counts).forEach(productId => {
+                    const product = data.products.find(p => p.id == productId);
+                    if (product) {
+                        totalItems += parseFloat(entry.counts[productId]);
+                        totalValue += parseFloat(entry.counts[productId]) * product.price;
+                    }
+                });
+                csvContent += `${key},${entry.status},${entry.created},${totalItems},${totalValue}\n`;
+            });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `inventory_export_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Analysis functions
+        function updateAnalysis() {
+            const key = `${currentLocation}|${currentMonth}`;
+            const currentCounts = monthlyData[key]?.counts || {};
+            
+            let totalValue = 0;
+            let itemsCounted = 0;
+            const categoryValues = {};
+            
+            products.forEach(product => {
+                const count = parseFloat(currentCounts[product.id]) || 0;
+                const value = count * product.price;
+                totalValue += value;
+                if (count > 0) itemsCounted++;
+                
+                if (!categoryValues[product.category]) {
+                    categoryValues[product.category] = 0;
+                }
+                categoryValues[product.category] += value;
+            });
+            
+            document.getElementById('totalInventoryValue').textContent = `€${totalValue.toFixed(2)}`;
+            document.getElementById('itemsCounted').textContent = formatDecimal(itemsCounted);
+            document.getElementById('totalItems').textContent = products.length;
+            
+            const avgPrice = itemsCounted > 0 ? totalValue / itemsCounted : 0;
+            document.getElementById('avgPrice').textContent = `€${avgPrice.toFixed(2)}`;
+            
+            let topCategory = '-';
+            let topCategoryValue = 0;
+            Object.keys(categoryValues).forEach(category => {
+                if (categoryValues[category] > topCategoryValue) {
+                    topCategory = category;
+                    topCategoryValue = categoryValues[category];
+                }
+            });
+            document.getElementById('topCategory').textContent = topCategory;
+            document.getElementById('topCategoryValue').textContent = `€${topCategoryValue.toFixed(2)}`;
+            
+            const progressPercent = (itemsCounted / products.length) * 100;
+            document.getElementById('inventoryProgress').style.width = `${progressPercent}%`;
         }
 
         // Location management
@@ -1560,6 +2265,13 @@
             
             locations.push({ id, name, active: true });
             saveLocations();
+            
+            // Log location add activity
+            logActivity('location_add', {
+                locationId: id,
+                locationName: name
+            });
+            
             closeModal('locationModal');
             updateLocationSelector();
             alert('Location added successfully');
@@ -1607,26 +2319,42 @@
                 return;
             }
             
-            if (users.find(u => u.username === username)) {
-                alert('Username already exists');
-                return;
-            }
-            
+            const existingUser = users.find(u => u.username === username);
             const locationAccess = Array.from(document.querySelectorAll('#locationAccessList input:checked'))
                 .map(checkbox => checkbox.value);
             
-            users.push({
-                username,
-                password,
-                role,
-                locations: locationAccess,
-                lastLogin: null
-            });
+            if (existingUser) {
+                // Update existing user
+                existingUser.password = password;
+                existingUser.role = role;
+                existingUser.locations = locationAccess;
+                
+                logActivity('user_edit', {
+                    username: username,
+                    role: role,
+                    locations: locationAccess
+                });
+            } else {
+                // Add new user
+                users.push({
+                    username,
+                    password,
+                    role,
+                    locations: locationAccess,
+                    lastLogin: null
+                });
+                
+                logActivity('user_add', {
+                    username: username,
+                    role: role,
+                    locations: locationAccess
+                });
+            }
             
             saveUsers();
             closeModal('userModal');
             showUserManagement();
-            alert('User added successfully');
+            alert(existingUser ? 'User updated successfully' : 'User added successfully');
         }
 
         function showUserManagement() {
@@ -1684,7 +2412,16 @@
                 return;
             }
             
+            const userToDelete = users.find(u => u.username === username);
+            if (!userToDelete) return;
+            
             if (confirm(`Are you sure you want to delete user ${username}?`)) {
+                logActivity('user_delete', {
+                    username: username,
+                    role: userToDelete.role,
+                    deletedBy: currentUser.username
+                });
+                
                 users = users.filter(u => u.username !== username);
                 saveUsers();
                 displayUsers();
@@ -1938,6 +2675,8 @@
             
             if (tabName === 'analysis') {
                 updateAnalysis();
+            } else if (tabName === 'activity') {
+                displayActivityLog();
             }
         }
 
@@ -2000,466 +2739,199 @@
             document.getElementById('totalCategories').textContent = [...new Set(products.map(p => p.category))].length;
         }
 
-        function editProduct(productId) {
-            const product = products.find(p => p.id === productId);
-            if (product) {
-                document.getElementById('productModalTitle').textContent = 'Edit Product';
-                document.getElementById('modalProductId').value = product.id;
-                document.getElementById('modalProductId').disabled = true;
-                document.getElementById('modalProductName').value = product.name;
-                document.getElementById('modalProductCategory').value = product.category;
-                document.getElementById('modalProductUnit').value = product.unit;
-                document.getElementById('modalProductPrice').value = product.price;
-                document.getElementById('productModal').style.display = 'flex';
-            }
-        }
+        // ==================== ACTIVITY LOG FUNCTIONS ====================
 
-        function updateCategoryFilter() {
-            const filter1 = document.getElementById('categoryFilter');
-            const filter2 = document.getElementById('countingCategoryFilter');
-            filter1.innerHTML = filter2.innerHTML = '<option value="">All Categories</option>';
-            const categories = [...new Set(products.map(p => p.category))].sort();
-            categories.forEach(category => {
-                const option1 = document.createElement('option');
-                option1.value = category;
-                option1.textContent = category;
-                filter1.appendChild(option1);
-                const option2 = document.createElement('option');
-                option2.value = category;
-                option2.textContent = category;
-                filter2.appendChild(option2);
+        // Display activity log
+        function displayActivityLog() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            
+            const userFilter = document.getElementById('activityUserFilter').value;
+            const actionFilter = document.getElementById('activityActionFilter').value;
+            const timeFilter = document.getElementById('activityTimeFilter').value;
+            
+            // Update user filter options
+            const userFilterSelect = document.getElementById('activityUserFilter');
+            userFilterSelect.innerHTML = '<option value="all">All Users</option>';
+            const uniqueUsers = [...new Set(activityLogs.map(log => log.user))];
+            uniqueUsers.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                userFilterSelect.appendChild(option);
             });
-        }
-
-        // Display counting products - FIXED: Properly uses current location and month
-        function displayCountingProducts() {
-            const tbody = document.getElementById('countingList');
+            
+            // Filter logs
+            let filteredLogs = [...activityLogs];
+            
+            // Apply filters
+            if (userFilter !== 'all') {
+                filteredLogs = filteredLogs.filter(log => log.user === userFilter);
+            }
+            
+            if (actionFilter !== 'all') {
+                filteredLogs = filteredLogs.filter(log => log.action === actionFilter);
+            }
+            
+            // Time filter
+            const now = new Date();
+            if (timeFilter === 'today') {
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= today);
+            } else if (timeFilter === 'yesterday') {
+                const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                filteredLogs = filteredLogs.filter(log => {
+                    const logDate = new Date(log.timestamp);
+                    return logDate >= yesterday && logDate < today;
+                });
+            } else if (timeFilter === 'week') {
+                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= weekAgo);
+            } else if (timeFilter === 'month') {
+                const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= monthAgo);
+            }
+            
+            // Display logs
+            const tbody = document.getElementById('activityLogList');
             tbody.innerHTML = '';
-            const categoryFilter = document.getElementById('countingCategoryFilter').value;
-            const searchTerm = document.getElementById('countingSearch').value.toLowerCase();
             
-            let filteredProducts = products;
-            if (categoryFilter) filteredProducts = filteredProducts.filter(p => p.category === categoryFilter);
-            if (searchTerm) filteredProducts = filteredProducts.filter(p => 
-                p.name.toLowerCase().includes(searchTerm) || p.id.toString().includes(searchTerm));
-            
-            if (filteredProducts.length === 0) {
+            if (filteredLogs.length === 0) {
                 const row = tbody.insertRow();
-                row.innerHTML = `<td colspan="6" style="text-align: center;">No products found</td>`;
+                row.innerHTML = `<td colspan="6" style="text-align: center; padding: 20px; color: #666;">No activities found for selected filters</td>`;
                 return;
             }
             
-            // KEY FIX: Always use currentLocation and currentMonth
-            const key = `${currentLocation}|${currentMonth}`;
-            
-            // Make sure data exists for this location/month
-            if (!monthlyData[key]) {
-                monthlyData[key] = {
-                    counts: {},
-                    created: new Date().toISOString(),
-                    status: 'open'
-                };
-                saveMonthlyData();
-            }
-            
-            const currentCounts = monthlyData[key].counts || {};
-            const isReadOnly = monthlyData[key].status === 'closed';
-            
-            let currentCategory = '';
-            filteredProducts.sort((a, b) => {
-                if (a.category !== b.category) return a.category.localeCompare(b.category);
-                return a.name.localeCompare(b.name);
-            }).forEach(product => {
-                if (product.category !== currentCategory) {
-                    currentCategory = product.category;
-                    const headerRow = tbody.insertRow();
-                    headerRow.className = 'category-header';
-                    headerRow.innerHTML = `<td colspan="6">${currentCategory}</td>`;
-                }
-                const count = currentCounts[product.id] || 0;
-                const totalValue = count * product.price;
+            filteredLogs.forEach(log => {
                 const row = tbody.insertRow();
+                const time = new Date(log.timestamp);
+                const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const dateStr = time.toLocaleDateString();
+                
+                // Format details based on action type
+                let detailsHtml = '';
+                switch(log.action) {
+                    case 'count_update':
+                        detailsHtml = `Product: ${log.details.productId}<br>
+                                      Change: ${log.details.change > 0 ? '+' : ''}${log.details.change}<br>
+                                      New Count: ${log.details.newCount}`;
+                        break;
+                    case 'product_add':
+                        detailsHtml = `ID: ${log.details.productId}<br>
+                                      Name: ${log.details.productName}<br>
+                                      Category: ${log.details.category}<br>
+                                      Price: €${log.details.price}`;
+                        break;
+                    case 'product_edit':
+                        detailsHtml = `Product ID: ${log.details.productId}<br>
+                                      Changes: ${Object.keys(log.details.changes).join(', ')}`;
+                        break;
+                    case 'product_delete':
+                        detailsHtml = `Deleted Product ID: ${log.details.productId}`;
+                        break;
+                    case 'user_add':
+                        detailsHtml = `Username: ${log.details.username}<br>
+                                      Role: ${log.details.role}`;
+                        break;
+                    default:
+                        detailsHtml = JSON.stringify(log.details);
+                }
+                
+                // Action badge color
+                let badgeColor = '';
+                switch(log.action) {
+                    case 'login': badgeColor = '#27ae60'; break;
+                    case 'logout': badgeColor = '#e74c3c'; break;
+                    case 'count_update': badgeColor = '#3498db'; break;
+                    case 'product_add': badgeColor = '#2ecc71'; break;
+                    case 'product_delete': badgeColor = '#e74c3c'; break;
+                    case 'user_add': badgeColor = '#9b59b6'; break;
+                    default: badgeColor = '#f39c12';
+                }
+                
                 row.innerHTML = `
-                    <td>${product.name}</td>
-                    <td>${product.category}</td>
-                    <td>${product.unit}</td>
-                    <td>€${product.price.toFixed(2)}</td>
                     <td>
-                        <div class="quantity-controls">
-                            <button class="quantity-btn" onclick="decrementCount('${product.id}', 1)" ${isReadOnly ? 'disabled' : ''}>-1</button>
-                            <button class="decimal-btn" onclick="decrementCount('${product.id}', 0.1)" ${isReadOnly ? 'disabled' : ''}>-0.1</button>
-                            <input type="number" class="quantity-input" value="${formatDecimal(count)}" 
-                                   onchange="setManualCount('${product.id}', this.value)" 
-                                   onblur="setManualCount('${product.id}', this.value)"
-                                   min="0" step="0.01" placeholder="0.00" ${isReadOnly ? 'disabled' : ''}>
-                            <button class="decimal-btn" onclick="incrementCount('${product.id}', 0.1)" ${isReadOnly ? 'disabled' : ''}>+0.1</button>
-                            <button class="quantity-btn" onclick="incrementCount('${product.id}', 1)" ${isReadOnly ? 'disabled' : ''}>+1</button>
-                        </div>
-                        <div class="custom-increment">
-                            <input type="number" class="custom-increment-input" id="customIncrement-${product.id}" 
-                                   placeholder="0.00" step="0.01" min="0.01" ${isReadOnly ? 'disabled' : ''}>
-                            <button class="custom-increment-btn" onclick="applyCustomIncrement('${product.id}')" ${isReadOnly ? 'disabled' : ''}>Apply</button>
-                        </div>
+                        <strong>${dateStr}</strong><br>
+                        <small>${timeStr}</small>
                     </td>
-                    <td>€${totalValue.toFixed(2)}</td>
+                    <td>
+                        <strong>${log.user}</strong><br>
+                        <small style="color: #666;">${log.userRole}</small>
+                    </td>
+                    <td>
+                        <span style="background: ${badgeColor}; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">
+                            ${log.action.replace('_', ' ')}
+                        </span>
+                    </td>
+                    <td style="max-width: 300px; word-wrap: break-word;">
+                        ${detailsHtml}
+                    </td>
+                    <td>${getLocationDisplayName(log.location)}</td>
+                    <td>${log.month ? formatMonthDisplay(log.month) : '-'}</td>
                 `;
             });
             
-            const totalCounted = Object.values(currentCounts).reduce((sum, count) => sum + parseFloat(count), 0);
-            document.getElementById('totalCounted').textContent = formatDecimal(totalCounted);
+            // Update stats
+            document.getElementById('totalActivities').textContent = activityLogs.length;
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayActivities = activityLogs.filter(log => new Date(log.timestamp) >= today).length;
+            document.getElementById('todayActivities').textContent = todayActivities;
+            
+            const uniqueActiveUsers = [...new Set(activityLogs
+                .filter(log => new Date(log.timestamp) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+                .map(log => log.user))].length;
+            document.getElementById('activeUsersCount').textContent = uniqueActiveUsers;
         }
 
-        // Quantity functions - FIXED: Always use currentLocation and currentMonth
-        function incrementCount(productId, increment = 1) {
-            if (isCountingClosed()) return;
-            
-            const key = `${currentLocation}|${currentMonth}`;
-            
-            // Make sure data exists
-            if (!monthlyData[key]) {
-                monthlyData[key] = {
-                    counts: {},
-                    created: new Date().toISOString(),
-                    status: 'open'
-                };
-            }
-            
-            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
-            monthlyData[key].counts[productId] = currentCount + increment;
-            saveMonthlyData();
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-        }
-
-        function decrementCount(productId, decrement = 1) {
-            if (isCountingClosed()) return;
-            
-            const key = `${currentLocation}|${currentMonth}`;
-            
-            // Make sure data exists
-            if (!monthlyData[key]) {
-                monthlyData[key] = {
-                    counts: {},
-                    created: new Date().toISOString(),
-                    status: 'open'
-                };
-            }
-            
-            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
-            const newCount = Math.max(0, currentCount - decrement);
-            monthlyData[key].counts[productId] = newCount;
-            saveMonthlyData();
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-        }
-
-        function setManualCount(productId, value) {
-            if (isCountingClosed()) return;
-            
-            const numValue = parseFloat(value) || 0;
-            if (numValue >= 0) {
-                const key = `${currentLocation}|${currentMonth}`;
-                
-                // Make sure data exists
-                if (!monthlyData[key]) {
-                    monthlyData[key] = {
-                        counts: {},
-                        created: new Date().toISOString(),
-                        status: 'open'
-                    };
-                }
-                
-                monthlyData[key].counts[productId] = numValue;
-                saveMonthlyData();
-                displayCountingProducts();
-                updateSummary();
-                updateAnalysis();
-            }
-        }
-
-        function applyCustomIncrement(productId) {
-            if (isCountingClosed()) return;
-            
-            const input = document.getElementById(`customIncrement-${productId}`);
-            const value = parseFloat(input.value);
-            if (!isNaN(value) && value > 0) {
-                incrementCount(productId, value);
-                input.value = '';
-            }
-        }
-
-        function isCountingClosed() {
-            const key = `${currentLocation}|${currentMonth}`;
-            if (monthlyData[key]?.status === 'closed') {
-                alert('Counting period is closed. No further edits allowed.');
-                return true;
-            }
-            return false;
-        }
-
-        function formatDecimal(value) {
-            const num = parseFloat(value);
-            return num % 1 === 0 ? num.toString() : num.toFixed(2);
-        }
-
-        // Update summary
-        function updateSummary() {
-            const key = `${currentLocation}|${currentMonth}`;
-            const currentCounts = monthlyData[key]?.counts || {};
-            
-            const totalCounted = Object.values(currentCounts).reduce((sum, count) => sum + parseFloat(count), 0);
-            const categorySummary = document.getElementById('categorySummary');
-            categorySummary.innerHTML = '';
-            const categories = {};
-            
-            products.forEach(product => {
-                if (!categories[product.category]) categories[product.category] = { count: 0, value: 0 };
-                const count = parseFloat(currentCounts[product.id]) || 0;
-                categories[product.category].count += count;
-                categories[product.category].value += count * product.price;
-            });
-            
-            Object.keys(categories).sort().forEach(category => {
-                const data = categories[category];
-                if (data.count > 0) {
-                    const row = document.createElement('div');
-                    row.className = 'summary-row';
-                    row.innerHTML = `<span>${category}:</span><span>${formatDecimal(data.count)} items (€${data.value.toFixed(2)})</span>`;
-                    categorySummary.appendChild(row);
-                }
-            });
-            
-            let totalItems = 0, totalValue = 0;
-            Object.keys(currentCounts).forEach(productId => {
-                const product = products.find(p => p.id == productId);
-                if (product) {
-                    totalItems += parseFloat(currentCounts[productId]);
-                    totalValue += parseFloat(currentCounts[productId]) * product.price;
-                }
-            });
-            
-            document.getElementById('totalItemsCounted').textContent = formatDecimal(totalItems);
-            document.getElementById('totalCountedValue').textContent = `€${totalValue.toFixed(2)}`;
-        }
-
-        function resetCurrentCounts() {
-            if (isCountingClosed()) return;
-            
-            if (confirm('Are you sure you want to reset all counts for the current period?')) {
-                const key = `${currentLocation}|${currentMonth}`;
-                monthlyData[key].counts = {};
-                saveMonthlyData();
-                displayCountingProducts();
-                updateSummary();
-                updateAnalysis();
-            }
-        }
-
-        // Filter functions
-        function filterProducts() { displayProducts(); }
-        function filterCountingProducts() { displayCountingProducts(); }
-
-        // Archive functions
-        function displayArchive() {
-            const locationFilter = document.getElementById('archiveLocationFilter').value;
-            const yearFilter = document.getElementById('archiveYearFilter').value;
-            const tbody = document.getElementById('archiveList');
-            tbody.innerHTML = '';
-            
-            const locationSelect = document.getElementById('archiveLocationFilter');
-            locationSelect.innerHTML = '<option value="all">All Locations</option>';
-            locations.filter(l => l.active).forEach(location => {
-                const option = document.createElement('option');
-                option.value = location.id;
-                option.textContent = location.name;
-                locationSelect.appendChild(option);
-            });
-            
-            const years = new Set();
-            Object.keys(monthlyData).forEach(key => {
-                const [location, month] = key.split('|');
-                const year = month.split('-')[0];
-                years.add(year);
-            });
-            const yearSelect = document.getElementById('archiveYearFilter');
-            yearSelect.innerHTML = '<option value="all">All Years</option>';
-            Array.from(years).sort().reverse().forEach(year => {
-                const option = document.createElement('option');
-                option.value = year;
-                option.textContent = year;
-                yearSelect.appendChild(option);
-            });
-            
-            const archiveEntries = [];
-            Object.keys(monthlyData).forEach(key => {
-                const [location, month] = key.split('|');
-                const year = month.split('-')[0];
-                
-                if (locationFilter !== 'all' && location !== locationFilter) return;
-                if (yearFilter !== 'all' && year !== yearFilter) return;
-                
-                const data = monthlyData[key];
-                let totalItems = 0, totalValue = 0;
-                Object.keys(data.counts).forEach(productId => {
-                    const product = products.find(p => p.id == productId);
-                    if (product) {
-                        totalItems += parseFloat(data.counts[productId]);
-                        totalValue += parseFloat(data.counts[productId]) * product.price;
-                    }
-                });
-                
-                archiveEntries.push({
-                    key: key,
-                    location: location,
-                    month: month,
-                    totalItems: totalItems,
-                    totalValue: totalValue,
-                    status: data.status,
-                    created: data.created
-                });
-            });
-            
-            archiveEntries.sort((a, b) => b.month.localeCompare(a.month));
-            
-            if (archiveEntries.length === 0) {
-                const row = tbody.insertRow();
-                row.innerHTML = `<td colspan="6" style="text-align: center;">No archive data found</td>`;
-                return;
-            }
-            
-            archiveEntries.forEach(entry => {
-                const row = tbody.insertRow();
-                row.innerHTML = `
-                    <td>${formatMonthDisplay(entry.month)}</td>
-                    <td>${getLocationDisplayName(entry.location)}</td>
-                    <td>${formatDecimal(entry.totalItems)}</td>
-                    <td>€${entry.totalValue.toFixed(2)}</td>
-                    <td><span class="${entry.status === 'open' ? 'status-open' : 'status-closed'}" style="padding: 4px 8px; border-radius: 3px;">${entry.status.toUpperCase()}</span></td>
-                    <td>
-                        <button class="decimal-btn" onclick="viewArchive('${entry.key}')">View</button>
-                    </td>
-                `;
-            });
-        }
-
-        function viewArchive(key) {
-            const [location, month] = key.split('|');
-            currentLocation = location;
-            currentMonth = month;
-            document.getElementById('yearSelect').value = month.split('-')[0];
-            updateMonthOptions();
-            document.getElementById('monthSelect').value = currentMonth;
-            
-            document.querySelectorAll('.location-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.textContent === getLocationDisplayName(location)) {
-                    btn.classList.add('active');
-                }
-            });
-            
-            updateUI();
-            openTab('counting');
-        }
-
-        // Export functions
-        function exportAllData() {
-            const data = {
-                products: products,
-                locations: locations,
-                users: users,
-                monthlyData: monthlyData,
-                exported: new Date().toISOString()
-            };
-            
-            exportToExcel(data);
-        }
-
-        function exportToExcel(data) {
-            let csvContent = "Inventory System Export\n";
+        // Export activity log to CSV
+        function exportActivityLog() {
+            let csvContent = "Activity Log Export\n";
             csvContent += "Generated: " + new Date().toLocaleString() + "\n\n";
+            csvContent += "Timestamp,User,User Role,Action,Details,Location,Month\n";
             
-            csvContent += "PRODUCTS\n";
-            csvContent += "ID,Name,Category,Unit,Price\n";
-            data.products.forEach(product => {
-                csvContent += `${product.id},"${product.name}",${product.category},${product.unit},${product.price}\n`;
-            });
-            
-            csvContent += "\n\nLOCATIONS\n";
-            csvContent += "ID,Name,Active\n";
-            data.locations.forEach(location => {
-                csvContent += `${location.id},"${location.name}",${location.active}\n`;
-            });
-            
-            csvContent += "\n\nMONTHLY DATA\n";
-            csvContent += "Location|Month,Status,Created,Total Items,Total Value\n";
-            Object.keys(data.monthlyData).forEach(key => {
-                const entry = data.monthlyData[key];
-                let totalItems = 0;
-                let totalValue = 0;
-                Object.keys(entry.counts).forEach(productId => {
-                    const product = data.products.find(p => p.id == productId);
-                    if (product) {
-                        totalItems += parseFloat(entry.counts[productId]);
-                        totalValue += parseFloat(entry.counts[productId]) * product.price;
-                    }
-                });
-                csvContent += `${key},${entry.status},${entry.created},${totalItems},${totalValue}\n`;
+            activityLogs.forEach(log => {
+                const details = typeof log.details === 'object' ? 
+                    JSON.stringify(log.details).replace(/"/g, '""') : 
+                    String(log.details);
+                
+                csvContent += `"${log.timestamp}","${log.user}","${log.userRole}","${log.action}","${details}","${log.location}","${log.month}"\n`;
             });
             
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
             link.setAttribute('href', url);
-            link.setAttribute('download', `inventory_export_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute('download', `activity_log_${new Date().toISOString().split('T')[0]}.csv`);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            
+            logActivity('data_export', { type: 'activity_log', count: activityLogs.length });
         }
 
-        // Analysis functions
-        function updateAnalysis() {
-            const key = `${currentLocation}|${currentMonth}`;
-            const currentCounts = monthlyData[key]?.counts || {};
+        // Clear activity log (admin only)
+        function clearActivityLog() {
+            if (!confirm('Are you sure you want to clear all activity logs? This cannot be undone.')) {
+                return;
+            }
             
-            let totalValue = 0;
-            let itemsCounted = 0;
-            const categoryValues = {};
+            activityLogs = [];
+            localStorage.setItem('inventoryActivityLogs', JSON.stringify([]));
             
-            products.forEach(product => {
-                const count = parseFloat(currentCounts[product.id]) || 0;
-                const value = count * product.price;
-                totalValue += value;
-                if (count > 0) itemsCounted++;
-                
-                if (!categoryValues[product.category]) {
-                    categoryValues[product.category] = 0;
-                }
-                categoryValues[product.category] += value;
-            });
+            // Clear from Firebase if needed
+            if (firebaseInitialized) {
+                firebase.database().ref('activity_logs').remove()
+                    .then(() => console.log('Firebase activity logs cleared'))
+                    .catch(error => console.error('Error clearing Firebase logs:', error));
+            }
             
-            document.getElementById('totalInventoryValue').textContent = `€${totalValue.toFixed(2)}`;
-            document.getElementById('itemsCounted').textContent = formatDecimal(itemsCounted);
-            document.getElementById('totalItems').textContent = products.length;
+            displayActivityLog();
+            alert('Activity log cleared successfully');
             
-            const avgPrice = itemsCounted > 0 ? totalValue / itemsCounted : 0;
-            document.getElementById('avgPrice').textContent = `€${avgPrice.toFixed(2)}`;
-            
-            let topCategory = '-';
-            let topCategoryValue = 0;
-            Object.keys(categoryValues).forEach(category => {
-                if (categoryValues[category] > topCategoryValue) {
-                    topCategory = category;
-                    topCategoryValue = categoryValues[category];
-                }
-            });
-            document.getElementById('topCategory').textContent = topCategory;
-            document.getElementById('topCategoryValue').textContent = `€${topCategoryValue.toFixed(2)}`;
-            
-            const progressPercent = (itemsCounted / products.length) * 100;
-            document.getElementById('inventoryProgress').style.width = `${progressPercent}%`;
+            logActivity('log_cleared', { clearedBy: currentUser.username });
         }
 
         // Initialize protection when page loads
