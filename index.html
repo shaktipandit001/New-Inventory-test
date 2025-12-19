@@ -607,6 +607,7 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
     <!-- Protection Overlay -->
@@ -943,7 +944,8 @@
                     <div class="user-card">
                         <h4>Data Management</h4>
                         <p>Export and backup system data</p>
-                        <button class="quantity-btn" onclick="exportAllData()">Export All Data</button>
+                        <button class="quantity-btn" onclick="exportCurrentInventory()">Export Current Inventory</button>
+                        <button class="quantity-btn" onclick="exportAllData()" style="margin-top: 10px;">Export All System Data</button>
                     </div>
                 </div>
 
@@ -2133,13 +2135,16 @@
             openTab('counting');
         }
 
-        // Export functions
+        // ==================== EXPORT FUNCTIONS - EXCEL FORMAT ====================
+
         function exportAllData() {
             const data = {
                 products: products,
                 locations: locations,
                 users: users,
                 monthlyData: monthlyData,
+                currentLocation: currentLocation,
+                currentMonth: currentMonth,
                 exported: new Date().toISOString()
             };
             
@@ -2156,27 +2161,158 @@
         }
 
         function exportToExcel(data) {
-            let csvContent = "Inventory System Export\n";
-            csvContent += "Generated: " + new Date().toLocaleString() + "\n\n";
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
             
-            csvContent += "PRODUCTS\n";
-            csvContent += "ID,Name,Category,Unit,Price\n";
+            // 1. CURRENT INVENTORY COUNT SHEET (Most Important!)
+            const key = `${data.currentLocation}|${data.currentMonth}`;
+            const currentCounts = data.monthlyData[key]?.counts || {};
+            
+            const inventoryData = [
+                ["CURRENT INVENTORY COUNT"],
+                ["Location:", getLocationDisplayName(data.currentLocation)],
+                ["Period:", formatMonthDisplay(data.currentMonth)],
+                ["Export Date:", new Date().toLocaleString()],
+                [],
+                ["Product ID", "Product Name", "Category", "Unit", "Price (€)", "Quantity", "Total Value (€)"]
+            ];
+            
+            let totalItemsCounted = 0;
+            let totalInventoryValue = 0;
+            
+            // Add products with counts
             data.products.forEach(product => {
-                csvContent += `${product.id},"${product.name}",${product.category},${product.unit},${product.price}\n`;
+                const count = parseFloat(currentCounts[product.id]) || 0;
+                const totalValue = count * product.price;
+                
+                if (count > 0) {
+                    inventoryData.push([
+                        product.id,
+                        product.name,
+                        product.category,
+                        product.unit,
+                        product.price,
+                        count,
+                        totalValue
+                    ]);
+                    
+                    totalItemsCounted += count;
+                    totalInventoryValue += totalValue;
+                }
             });
             
-            csvContent += "\n\nLOCATIONS\n";
-            csvContent += "ID,Name,Active\n";
-            data.locations.forEach(location => {
-                csvContent += `${location.id},"${location.name}",${location.active}\n`;
+            // Add summary rows
+            inventoryData.push([]);
+            inventoryData.push(["TOTAL ITEMS COUNTED:", totalItemsCounted]);
+            inventoryData.push(["TOTAL INVENTORY VALUE:", totalInventoryValue]);
+            
+            const inventoryWs = XLSX.utils.aoa_to_sheet(inventoryData);
+            XLSX.utils.book_append_sheet(wb, inventoryWs, "Current Inventory");
+            
+            // 2. ALL PRODUCTS SHEET (Complete catalog)
+            const productsData = [
+                ["COMPLETE PRODUCT CATALOG"],
+                ["Total Products:", data.products.length],
+                [],
+                ["ID", "Name", "Category", "Unit", "Price (€)"]
+            ];
+            
+            // Group by category
+            const categories = {};
+            data.products.forEach(product => {
+                if (!categories[product.category]) {
+                    categories[product.category] = [];
+                }
+                categories[product.category].push(product);
             });
             
-            csvContent += "\n\nMONTHLY DATA\n";
-            csvContent += "Location|Month,Status,Created,Total Items,Total Value\n";
+            Object.keys(categories).sort().forEach(category => {
+                productsData.push([category.toUpperCase() + " CATEGORY"]);
+                categories[category].forEach(product => {
+                    productsData.push([
+                        product.id,
+                        product.name,
+                        product.category,
+                        product.unit,
+                        product.price
+                    ]);
+                });
+                productsData.push([]);
+            });
+            
+            const productsWs = XLSX.utils.aoa_to_sheet(productsData);
+            XLSX.utils.book_append_sheet(wb, productsWs, "All Products");
+            
+            // 3. COUNTED ITEMS DETAILED SHEET (All items with counts)
+            const countedData = [
+                ["INVENTORY COUNT DETAILED REPORT"],
+                ["Location:", getLocationDisplayName(data.currentLocation)],
+                ["Period:", formatMonthDisplay(data.currentMonth)],
+                [],
+                ["Category", "Product Name", "Unit", "Price (€)", "Quantity", "Total Value (€)"]
+            ];
+            
+            // Group by category
+            const countedByCategory = {};
+            data.products.forEach(product => {
+                const count = parseFloat(currentCounts[product.id]) || 0;
+                if (count > 0) {
+                    if (!countedByCategory[product.category]) {
+                        countedByCategory[product.category] = [];
+                    }
+                    countedByCategory[product.category].push({
+                        name: product.name,
+                        unit: product.unit,
+                        price: product.price,
+                        count: count,
+                        totalValue: count * product.price
+                    });
+                }
+            });
+            
+            Object.keys(countedByCategory).sort().forEach(category => {
+                countedData.push([category.toUpperCase()]);
+                let categoryTotal = 0;
+                
+                countedByCategory[category].forEach(item => {
+                    countedData.push([
+                        "", // Empty for category column since we're grouping
+                        item.name,
+                        item.unit,
+                        item.price,
+                        item.count,
+                        item.totalValue
+                    ]);
+                    categoryTotal += item.totalValue;
+                });
+                
+                countedData.push([
+                    "Category Total:",
+                    "",
+                    "",
+                    "",
+                    "",
+                    categoryTotal
+                ]);
+                countedData.push([]);
+            });
+            
+            // Add final totals
+            countedData.push(["GRAND TOTAL", "", "", "", totalItemsCounted, totalInventoryValue]);
+            
+            const countedWs = XLSX.utils.aoa_to_sheet(countedData);
+            XLSX.utils.book_append_sheet(wb, countedWs, "Counted Items");
+            
+            // 4. MONTHLY ARCHIVE SHEET
+            const monthlyHeader = ["Location|Month", "Location Name", "Month", "Status", "Total Items", "Total Value (€)", "Created Date"];
+            const monthlyRows = [];
+            
             Object.keys(data.monthlyData).forEach(key => {
+                const [location, month] = key.split('|');
                 const entry = data.monthlyData[key];
                 let totalItems = 0;
                 let totalValue = 0;
+                
                 Object.keys(entry.counts).forEach(productId => {
                     const product = data.products.find(p => p.id == productId);
                     if (product) {
@@ -2184,18 +2320,179 @@
                         totalValue += parseFloat(entry.counts[productId]) * product.price;
                     }
                 });
-                csvContent += `${key},${entry.status},${entry.created},${totalItems},${totalValue}\n`;
+                
+                monthlyRows.push([
+                    key,
+                    getLocationDisplayName(location),
+                    formatMonthDisplay(month),
+                    entry.status.toUpperCase(),
+                    totalItems,
+                    totalValue,
+                    new Date(entry.created).toLocaleString()
+                ]);
             });
             
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `inventory_export_${new Date().toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            const monthlyDataSheet = [monthlyHeader, ...monthlyRows];
+            const monthlyWs = XLSX.utils.aoa_to_sheet(monthlyDataSheet);
+            XLSX.utils.book_append_sheet(wb, monthlyWs, "Monthly Archive");
+            
+            // 5. SUMMARY SHEET
+            const summaryData = [
+                ["INVENTORY SYSTEM EXPORT SUMMARY"],
+                ["Generated:", new Date().toLocaleString()],
+                [],
+                ["SYSTEM STATISTICS"],
+                ["Total Products:", data.products.length],
+                ["Total Locations:", data.locations.length],
+                ["Total Users:", data.users.length],
+                ["Total Monthly Records:", Object.keys(data.monthlyData).length],
+                [],
+                ["CURRENT INVENTORY STATISTICS"],
+                ["Current Location:", getLocationDisplayName(data.currentLocation)],
+                ["Current Period:", formatMonthDisplay(data.currentMonth)],
+                ["Items Counted:", totalItemsCounted],
+                ["Total Inventory Value:", totalInventoryValue],
+                ["Export Date:", new Date().toISOString().split('T')[0]]
+            ];
+            
+            const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
+            
+            // Generate Excel file
+            const fileName = `inventory_${getLocationDisplayName(data.currentLocation).replace(/\s+/g, '_')}_${data.currentMonth}_export.xlsx`;
+            XLSX.writeFile(wb, fileName);
+        }
+
+        // Add this function for exporting just the current counted inventory
+        function exportCurrentInventory() {
+            const key = `${currentLocation}|${currentMonth}`;
+            const currentCounts = monthlyData[key]?.counts || {};
+            
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            
+            // Main inventory sheet
+            const inventoryData = [
+                ["HAFERKATER INVENTORY COUNT REPORT"],
+                ["Location:", getLocationDisplayName(currentLocation)],
+                ["Period:", formatMonthDisplay(currentMonth)],
+                ["Export Date:", new Date().toLocaleString()],
+                ["Status:", monthlyData[key]?.status === 'closed' ? 'CLOSED' : 'OPEN'],
+                [],
+                ["Product ID", "Product Name", "Category", "Unit", "Price (€)", "Quantity", "Total Value (€)"]
+            ];
+            
+            let totalItemsCounted = 0;
+            let totalInventoryValue = 0;
+            
+            // Group by category
+            const categories = {};
+            products.forEach(product => {
+                const count = parseFloat(currentCounts[product.id]) || 0;
+                if (count > 0) {
+                    if (!categories[product.category]) {
+                        categories[product.category] = [];
+                    }
+                    categories[product.category].push({
+                        id: product.id,
+                        name: product.name,
+                        unit: product.unit,
+                        price: product.price,
+                        count: count,
+                        totalValue: count * product.price
+                    });
+                    
+                    totalItemsCounted += count;
+                    totalInventoryValue += count * product.price;
+                }
+            });
+            
+            // Add categorized data
+            Object.keys(categories).sort().forEach(category => {
+                // Add category header
+                inventoryData.push([category.toUpperCase() + " CATEGORY"]);
+                
+                // Add products in this category
+                let categoryTotal = 0;
+                categories[category].forEach(item => {
+                    inventoryData.push([
+                        item.id,
+                        item.name,
+                        category,
+                        item.unit,
+                        item.price,
+                        item.count,
+                        item.totalValue
+                    ]);
+                    categoryTotal += item.totalValue;
+                });
+                
+                // Add category subtotal
+                inventoryData.push([
+                    "Category Total:",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    categoryTotal
+                ]);
+                inventoryData.push([]);
+            });
+            
+            // Add grand totals
+            inventoryData.push([]);
+            inventoryData.push(["GRAND TOTAL", "", "", "", "", totalItemsCounted, totalInventoryValue]);
+            
+            const inventoryWs = XLSX.utils.aoa_to_sheet(inventoryData);
+            XLSX.utils.book_append_sheet(wb, inventoryWs, "Inventory Count");
+            
+            // Summary sheet
+            const summaryData = [
+                ["INVENTORY COUNT SUMMARY"],
+                ["Location:", getLocationDisplayName(currentLocation)],
+                ["Period:", formatMonthDisplay(currentMonth)],
+                ["Export Date:", new Date().toLocaleString()],
+                [],
+                ["SUMMARY BY CATEGORY"]
+            ];
+            
+            // Add category summaries
+            Object.keys(categories).sort().forEach(category => {
+                let categoryItems = 0;
+                let categoryValue = 0;
+                
+                categories[category].forEach(item => {
+                    categoryItems += item.count;
+                    categoryValue += item.totalValue;
+                });
+                
+                summaryData.push([
+                    category + ":",
+                    categoryItems.toFixed(2) + " items",
+                    "€" + categoryValue.toFixed(2)
+                ]);
+            });
+            
+            summaryData.push([]);
+            summaryData.push(["TOTAL ITEMS COUNTED:", totalItemsCounted.toFixed(2)]);
+            summaryData.push(["TOTAL INVENTORY VALUE:", "€" + totalInventoryValue.toFixed(2)]);
+            
+            const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
+            
+            // Generate Excel file
+            const fileName = `haferkater_inventory_${getLocationDisplayName(currentLocation).replace(/\s+/g, '_')}_${currentMonth}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            
+            // Log activity
+            logActivity('data_export', {
+                type: 'inventory_count_export',
+                location: currentLocation,
+                month: currentMonth,
+                itemsCounted: totalItemsCounted,
+                totalValue: totalInventoryValue
+            });
         }
 
         // Analysis functions
@@ -2559,137 +2856,72 @@
                 { id: '308323', name: 'Vitamin Well Reload EW 0,5l', unit: 'stuck', category: 'Trockenware', price: 1.56 },
                 { id: '871225', name: 'Bio Volvic Tee Zitr.EW 0,75l', unit: 'stuck', category: 'Trockenware', price: 1.505 },
                 { id: '846238', name: 'Bio Dattelsirup Imm.250ml', unit: 'stuck', category: 'Trockenware', price: 2.27 },
-                { id: '6477', name: 'Sonnensalz Speisesalz Esco500g', unit: 'stuck', category: 'Trockenware', price: 0.215 },
-                { id: '962589', name: 'Bio Leinsamen braun TGN 1kg', unit: 'stuck', category: 'Trockenware', price: 2.91 },
-                { id: '823078', name: 'Orangensaft mit Ff. Elka 250ml', unit: 'stuck', category: 'Trockenware', price: 1.85 },
-                { id: '660720', name: 'Sojabohnenpaste Miso AEF.500g', unit: 'stuck', category: 'Trockenware', price: 1.79 },
-                { id: '610018', name: 'Backin Backpulver KMF Oet.1kg', unit: 'stuck', category: 'Trockenware', price: 4.955 },
-                { id: '883929', name: 'Bio Volvic Tee Pfirs.EW 0,75l', unit: 'stuck', category: 'Trockenware', price: 1.505 },
-                { id: '316385', name: 'Assam Schwarztee TGQ 25x1,5g', unit: 'stuck', category: 'Trockenware', price: 1.68 },
-                { id: '561296', name: 'Zimt gemahlen TGQ 500g', unit: 'stuck', category: 'Trockenware', price: 7.74 },
-                { id: '27169', name: 'B1774_Dinkel-Rog Brot TK14x1kg', unit: 'stuck', category: 'Tk Allgemein', price: 4.01 },
-                { id: '47652', name: 'B1774_Karott.Ku.ges.TK12x1600g', unit: 'stuck', category: 'Tk Allgemein', price: 184.14 },
-                { id: '151286', name: 'B1774_Ban.BreadSchoko.TK14x1kg', unit: 'stuck', category: 'Tk Allgemein', price: 140.4 },
-                { id: '368960', name: 'B1774_Ban.Bread Waln.TK14x1kg', unit: 'stuck', category: 'Tk Allgemein', price: 123.23 },
-                { id: '95292', name: 'Falafel geg.vege.TK 1,5kg', unit: 'stuck', category: 'Tk Allgemein', price: 9.38 },
-                { id: '875233', name: 'Grillgemüse Mediter.TK Sa.1kg', unit: 'stuck', category: 'Tk Allgemein', price: 5.071 },
-                { id: '938436', name: 'Eiswürfel Cube TK I.A.2kg', unit: 'stuck', category: 'Tk Allgemein', price: 1.109 },
-                { id: '361525', name: 'B1774_Karottenlax vegan TK 3kg', unit: 'stuck', category: 'Tk Allgemein', price: 39.06 },
-                { id: '86562', name: 'Edamame geschält TK GM.1kg', unit: 'stuck', category: 'Tk Allgemein', price: 3.09 },
-                { id: '536912', name: 'DPG 6,50 EUR 20 Fl.0,25 +Kiste', unit: 'stuck', category: 'Sammel CM 0', price: 6.5 },
-                { id: '887151', name: 'DPG 4,50 EUR 12 Fl.0,25 +Kiste', unit: 'stuck', category: 'Sammel CM 0', price: 4.5 },
-                { id: '518470', name: 'DPG 3,00 EUR 12 Fl/Ds 0,25', unit: 'stuck', category: 'Sammel CM 0', price: 3.0 },
-                { id: '70297', name: 'DPG 1,50 EUR 6 Fl/Ds 0,25', unit: 'stuck', category: 'Sammel CM 0', price: 1.5 },
-                { id: '908177', name: 'LG 0,08 EUR Flasche', unit: 'stuck', category: 'Sammel CM 0', price: 0.08 },
-                { id: '436953', name: 'LG 5,10 EUR 24 Fl.0,15 + Kiste', unit: 'stuck', category: 'Sammel CM 0', price: 5.1 },
-                { id: '900034', name: 'LG 1,50 EUR Leergutkiste', unit: 'stuck', category: 'Sammel CM 0', price: 1.5 },
-                { id: '334068', name: 'Topmatic Clean 5l', unit: 'stuck', category: 'Non Food', price: 41.69 },
-                { id: '291662', name: 'Regeneriersalz 500g', unit: 'stuck', category: 'Non Food', price: 1.22 },
-                { id: '396219', name: 'Assert Clean 1l', unit: 'stuck', category: 'Non Food', price: 4.0 },
-                { id: '773723', name: 'Drysan Oxy 1l', unit: 'stuck', category: 'Non Food', price: 9.97 },
-                { id: '236536', name: 'Toipa 2lg Sa.Comf.Hw 8x250Bl', unit: 'stuck', category: 'Non Food', price: 2.66 },
-                { id: '304143', name: 'Bio Frischmilch 3,8% ESL 1l', unit: 'stuck', category: 'Frischwaren', price: 1.312 },
-                { id: '132609', name: 'B1774_Caesar Mayo. fr. 1kg', unit: 'stuck', category: 'Frischwaren', price: 8.826 },
-                { id: '788842', name: 'Violife Greek White Block1,2kg', unit: 'stuck', category: 'Frischwaren', price: 18.55 },
-                { id: '988612', name: 'Frischk.Nat.70% TGQ 1,5kg', unit: 'stuck', category: 'Frischwaren', price: 10.78 },
-                { id: '96661', name: 'Hummus Classic FR Neni 1kg', unit: 'stuck', category: 'Frischwaren', price: 7.684 },
-                { id: '809620', name: 'B1774_Tahin Dressing fr. 1kg', unit: 'stuck', category: 'Frischwaren', price: 13.309 },
-                { id: '9280', name: 'B1774_Bal.-Oran. Dress. fr.1kg', unit: 'stuck', category: 'Frischwaren', price: 7.717 },
-                { id: '857989', name: 'Bio Porridge Apfel u.Zimt 180g', unit: 'stuck', category: 'Frischwaren', price: 1.418 },
-                { id: '943615', name: 'Bio Porridge Blaubeere 180g', unit: 'stuck', category: 'Frischwaren', price: 1.418 },
-                { id: '20633', name: 'Bio Tofu natur FR TGN 1,3kg', unit: 'stuck', category: 'Frischwaren', price: 5.06 },
-                { id: '892432', name: 'B1774_Honig-Senf Dress. fr.1kg', unit: 'stuck', category: 'Frischwaren', price: 7.91 },
-                { id: '514996', name: 'Mozzarella Mini 45% TGQ 125x8g', unit: 'stuck', category: 'Frischwaren', price: 7.33 },
-                { id: '198660', name: 'B1774_Bio Dattelwürfel 10kg', unit: 'stuck', category: 'Frischwaren', price: 62.22 },
-                { id: '278244', name: 'Bio Tofu geräu.FR TGN 1,3kg', unit: 'stuck', category: 'Frischwaren', price: 6.77 },
-                { id: '243711', name: 'MANGO.MARA.SMOOTHIE.TRUE.0,25L', unit: 'stuck', category: 'Frischwaren', price: 1.996 },
-                { id: '679633', name: 'Tomaten getr.i.Öl FR TGQ 1,1kg', unit: 'stuck', category: 'Frischwaren', price: 10.67 },
-                { id: '243742', name: 'Pink SMOOTHIE TRUE.0,25L', unit: 'stuck', category: 'Frischwaren', price: 2.025 },
-
-                // Gemüse Products
-                { id: '11410510', name: 'HEIDELBEEREN KG', unit: 'KG', category: 'Gemüse', price: 18.05 },
-                { id: '11428510', name: 'ERDBEEREN KG', unit: 'KG', category: 'Gemüse', price: 132.00 },
-                { id: '11428520', name: 'ERDBEEREN NL/BE KG', unit: 'KG', category: 'Gemüse', price: 132.00 },
-                { id: '11500560', name: 'BIRNE KLEIN KG', unit: 'KG', category: 'Gemüse', price: 1.700 },
-                { id: '11534560', name: 'APFEL GALA ROYAL GELEGT KG', unit: 'KG', category: 'Gemüse', price: 2.080 },
-                { id: '11534580', name: 'APFEL BRAEBURN GELEGT KG', unit: 'KG', category: 'Gemüse', price: 2.080 },
-                { id: '12110510', name: 'BANANEN STANDARD KG', unit: 'KG', category: 'Gemüse', price: 1.750 },
-                { id: '12110515', name: 'BANANEN STANDARD KISTE 18KG', unit: 'Kiste', category: 'Gemüse', price: 14.90 },
-                { id: '12371510', name: 'ORANGEN GROSS CA. 300G KG', unit: 'KG', category: 'Gemüse', price: 2.080 },
-                { id: '12500510', name: 'ZITRONEN ST', unit: 'Stück', category: 'Gemüse', price: 0.340 },
-                { id: '16070510', name: 'GRANATAPFEL ST', unit: 'Stück', category: 'Gemüse', price: 1890 },
-                { id: '16352520', name: 'PHYSALIS 100G SCHALE', unit: 'Schale', category: 'Gemüse', price: 1.650 },
-                { id: '13330515', name: 'GURKEN 4/5 ER ST', unit: 'Stück', category: 'Gemüse', price: 1.340 },
-                { id: '14581510', name: 'RADIESCHEN OHNE GRÜN KG', unit: 'KG', category: 'Gemüse', price: 2.390 },
-                { id: '15630510', name: 'TOMATEN STRAUCH KG', unit: 'KG', category: 'Gemüse', price: 3.160 },
-                { id: '15653515', name: 'TOMATENCHERRYSTRAUCHKISTE', unit: 'Kiste', category: 'Gemüse', price: 3.99 },
-                { id: '16060510', name: 'INGWER KG', unit: 'KG', category: 'Gemüse', price: 4.750 },
-                { id: '16310515', name: 'AVOCADO READY TO EAT ST', unit: 'Stück', category: 'Gemüse', price: 1.430 },
-                { id: '13298331', name: 'MINZE 100G PACKUNG', unit: 'Packung', category: 'Gemüse', price: 2.3900 },
-                { id: '13298334', name: 'KORIANDER 100G PACKUNG', unit: 'Packung', category: 'Gemüse', price: 2.3900 },
-                { id: '13298340', name: 'BASILIKUM 100G PACKUNG', unit: 'Packung', category: 'Gemüse', price: 2.6500 },
-                { id: '25048010', name: 'ROTKOHLSTREIFEN1,2-2MM1KGN', unit: 'KG', category: 'Gemüse', price: 2.300 },
-                { id: '25049020', name: 'ROTKOHLSTREIFEN4-6MM2,5KGR', unit: 'KG', category: 'Gemüse', price: 2.300 },
-                { id: '25112038', name: 'RUCOLA GEP. EXTRA 0,25KG NAP', unit: 'Packung', category: 'Gemüse', price: 2.495 },
-                { id: '23148010', name: 'BLATTSALATMIXMONACO1KGNAP', unit: 'KG', category: 'Gemüse', price: 5.880 },
-                { id: '46005072', name: 'LANDFRISCHKÄSE 70% 1,5KG BLD', unit: 'KG', category: 'Gemüse', price: 5.600 },
-                { id: '46010038', name: 'MOZZARELLAGOURM45%125x8GC Anzahl', unit: 'Anzahl', category: 'Gemüse', price: 7.280 },
-                { id: '41001056', name: 'BIOH-MILCH3,5%LAKTOSEFR.10x1 Anzahl', unit: 'Anzahl', category: 'Gemüse', price: 1.560 },
-                { id: '30800118', name: 'BARISTAKOKOSNUSSDRINK8x1LAl Anzahl', unit: 'Anzahl', category: 'Gemüse', price: 2.140 },
-                { id: '30800210', name: 'HAFERDRINK BARISTA 6x1,5L Oatly Anzahl', unit: 'Anzahl', category: 'Gemüse', price: 1.758 },
-                { id: '65008990', name: 'TK EISWÜRFEL 2KG Anzahl', unit: 'Anzahl', category: 'Gemüse', price: 1.437 },
-                { id: '55002396', name: 'GREEK WHITE BLK 29% 1,2KG VIOLI Anzahl', unit: 'Anzahl', category: 'Gemüse', price: 13.074 },
-
+                { id: '6477', name: 'Sonnensalz Speisesalz TGQ 1kg', unit: 'stuck', category: 'Trockenware', price: 0.99 },
+                { id: '55988', name: 'Bio Sojaghurt N. 1,5% TGN 1kg', unit: 'stuck', category: 'Trockenware', price: 2.575 },
+                { id: '937418', name: 'Basilikum grob TGN 50g', unit: 'stuck', category: 'Trockenware', price: 2.31 },
+                { id: '68171', name: 'Gemüsebrühe TGN 60g', unit: 'stuck', category: 'Trockenware', price: 2.475 },
+                { id: '266167', name: 'Leinsamen geschr. TGN 500g', unit: 'stuck', category: 'Trockenware', price: 2.09 },
+                { id: '743096', name: 'Paprikapulver edelsüß TGN 75g', unit: 'stuck', category: 'Trockenware', price: 1.815 },
+                { id: '918127', name: 'Kokosöl nativ TGN 1l', unit: 'stuck', category: 'Trockenware', price: 15.87 },
+                { id: '479912', name: 'Buchweizen Vollk. TGN 500g', unit: 'stuck', category: 'Trockenware', price: 2.64 },
+                { id: '959162', name: 'Sesam geschält TGN 500g', unit: 'stuck', category: 'Trockenware', price: 3.52 },
+                { id: '456027', name: 'Vanillemark TGN 100g', unit: 'stuck', category: 'Trockenware', price: 8.36 },
+                { id: '262955', name: 'Zimtpulver TGN 40g', unit: 'stuck', category: 'Trockenware', price: 1.815 },
+                { id: '117439', name: 'Bio Cranberries getr. 500g', unit: 'stuck', category: 'Trockenware', price: 7.975 },
+                { id: '990293', name: 'Bio Cashewkerne geröst. 500g', unit: 'stuck', category: 'Trockenware', price: 9.35 },
+                { id: '524726', name: 'Kurkumapulver TGN 50g', unit: 'stuck', category: 'Trockenware', price: 2.09 },
+                { id: '683850', name: 'Ingwerpulver TGN 70g', unit: 'stuck', category: 'Trockenware', price: 2.475 },
+                
                 // Retail Products
-                { id: '60288', name: 'Dr. Quendt Bemmchen 1', unit: 'Stück', category: 'Retail', price: 1.931 },
-                { id: '42801', name: 'Edel-Hefeflocken konv. 1 für 200g Pk', unit: 'Packung', category: 'Retail', price: 5.0567 },
-                { id: 'TMB07W-00500', name: 'Bio Matcha 500 g Beutel', unit: 'Beutel', category: 'Retail', price: 95.24 },
-                { id: 'HK020', name: 'Bio Porridge Topping Tray 1', unit: 'Tray', category: 'Retail', price: 0.84 },
-                { id: '2731', name: 'Katerkugel Kirsche - Kakao 1 paket', unit: 'Paket', category: 'Retail', price: 19.14 },
-                { id: '2735', name: 'Katerkugel Apfel - Zimt 1 pakt', unit: 'Paket', category: 'Retail', price: 19.14 },
-                { id: 'HaGr008', name: 'Bio Hafer Granola Kakao - Crunch 1 (300g)', unit: 'Beutel', category: 'Retail', price: 3.96 },
-                { id: 'HaGr007', name: 'Bio Hafer Granola Mandel - Honig 1 (300g)', unit: 'Beutel', category: 'Retail', price: 3.96 },
-                { id: '2002-VPE', name: 'VPE 1 Stck - Simply Chai Spicy BIO', unit: 'Stück', category: 'Retail', price: 19.1267 },
-                { id: 'TS001', name: 'Bio Trinkschokolade, dunkel 1kg', unit: 'KG', category: 'Retail', price: 14.32 },
-                { id: 'TS002', name: 'Bio Trinkschokolade, chai 1kg', unit: 'KG', category: 'Retail', price: 14.32 },
-                { id: '10122', name: 'Bio Goldlein Protein Pulver - FEIN 1kg', unit: 'KG', category: 'Retail', price: 9.94 },
-                { id: 'LoBiCr750', name: 'Lotus Biscoff Crumble 1(750g)', unit: 'Beutel', category: 'Retail', price: 7.145 },
-                { id: '0544-100250', name: 'Bio Espresso Entkoffeiniert, gemahlen 1(500g)', unit: 'Beutel', category: 'Retail', price: 11.2967 },
-                { id: '18K1257p0110', name: 'Guthabenkarte QR Code, 1', unit: 'Stück', category: 'Retail', price: 0.98 }
+                { id: 'R001', name: 'Bio Granola 250g', unit: 'stuck', category: 'Retail', price: 6.50 },
+                { id: 'R002', name: 'Bio Porridge Hafer', unit: 'stuck', category: 'Retail', price: 4.90 },
+                { id: 'R003', name: 'Bio Kaffee Bohnen 500g', unit: 'stuck', category: 'Retail', price: 14.90 },
+                { id: 'R004', name: 'Haferdrink 1L', unit: 'stuck', category: 'Retail', price: 2.99 },
+                { id: 'R005', name: 'Energy Balls 3er Pack', unit: 'stuck', category: 'Retail', price: 3.90 },
+                { id: 'R006', name: 'Bio Tee Mischung', unit: 'stuck', category: 'Retail', price: 5.50 },
+                { id: 'R007', name: 'Nussmus Glas 250g', unit: 'stuck', category: 'Retail', price: 7.90 },
+                { id: 'R008', name: 'Reiswaffeln Sesam', unit: 'stuck', category: 'Retail', price: 2.50 },
+                { id: 'R009', name: 'Datteln Medjool 500g', unit: 'stuck', category: 'Retail', price: 8.90 },
+                { id: 'R010', name: 'Bio Schokolade 85%', unit: 'stuck', category: 'Retail', price: 4.50 },
+                { id: 'R011', name: 'Kräutersalz Glas', unit: 'stuck', category: 'Retail', price: 6.90 },
+                { id: 'R012', name: 'Fruchtriegel Beere', unit: 'stuck', category: 'Retail', price: 2.20 },
+                { id: 'R013', name: 'Kokoschips gesalzen', unit: 'stuck', category: 'Retail', price: 5.90 },
+                { id: 'R014', name: 'Ingwer Shot 95ml', unit: 'stuck', category: 'Retail', price: 3.50 },
+                { id: 'R015', name: 'Studentenfutter 200g', unit: 'stuck', category: 'Retail', price: 4.20 },
+                { id: 'R016', name: 'Quinoa 500g', unit: 'stuck', category: 'Retail', price: 6.90 },
+                { id: 'R017', name: 'Linsen Rot 500g', unit: 'stuck', category: 'Retail', price: 3.90 },
+                { id: 'R018', name: 'Chia Samen 250g', unit: 'stuck', category: 'Retail', price: 5.90 },
+                { id: 'R019', name: 'Protein Pulver 500g', unit: 'stuck', category: 'Retail', price: 19.90 },
+                { id: 'R020', name: 'Kurkuma Latte Mix', unit: 'stuck', category: 'Retail', price: 8.90 },
+                
+                // Gemüse (Vegetables) Category
+                { id: 'V001', name: 'Kartoffeln mehlig 2.5kg', unit: 'stuck', category: 'Gemüse', price: 3.50 },
+                { id: 'V002', name: 'Zwiebeln rot 1kg', unit: 'stuck', category: 'Gemüse', price: 2.90 },
+                { id: 'V003', name: 'Knoblauch 500g', unit: 'stuck', category: 'Gemüse', price: 4.50 },
+                { id: 'V004', name: 'Karotten 2kg', unit: 'stuck', category: 'Gemüse', price: 3.20 },
+                { id: 'V005', name: 'Sellerie Stange', unit: 'stuck', category: 'Gemüse', price: 2.80 },
+                { id: 'V006', name: 'Lauch 1kg', unit: 'stuck', category: 'Gemüse', price: 3.90 },
+                { id: 'V007', name: 'Spinat TK 1kg', unit: 'stuck', category: 'Gemüse', price: 5.20 },
+                { id: 'V008', name: 'Brokkoli 1kg', unit: 'stuck', category: 'Gemüse', price: 4.80 },
+                { id: 'V009', name: 'Blumenkohl 1kg', unit: 'stuck', category: 'Gemüse', price: 4.50 },
+                { id: 'V010', name: 'Paprika rot 1kg', unit: 'stuck', category: 'Gemüse', price: 8.90 },
+                { id: 'V011', name: 'Zucchini 1kg', unit: 'stuck', category: 'Gemüse', price: 6.50 },
+                { id: 'V012', name: 'Aubergine 1kg', unit: 'stuck', category: 'Gemüse', price: 7.90 },
+                { id: 'V013', name: 'Tomaten 1kg', unit: 'stuck', category: 'Gemüse', price: 5.90 },
+                { id: 'V014', name: 'Gurken 1kg', unit: 'stuck', category: 'Gemüse', price: 4.20 },
+                { id: 'V015', name: 'Champignons 1kg', unit: 'stuck', category: 'Gemüse', price: 7.50 },
+                { id: 'V016', name: 'Ingwer 500g', unit: 'stuck', category: 'Gemüse', price: 9.90 },
+                { id: 'V017', name: 'Kräuter Mix Bund', unit: 'stuck', category: 'Gemüse', price: 3.50 },
+                { id: 'V018', name: 'Salat Mix 500g', unit: 'stuck', category: 'Gemüse', price: 4.90 },
+                { id: 'V019', name: 'Rote Bete 1kg', unit: 'stuck', category: 'Gemüse', price: 4.20 },
+                { id: 'V020', name: 'Kürbis 1kg', unit: 'stuck', category: 'Gemüse', price: 3.90 }
             ];
-            saveProducts();
-        }
-
-        // Tab navigation
-        function openTab(tabName) {
-            const tabContents = document.getElementsByClassName('tab-content');
-            for (let i = 0; i < tabContents.length; i++) {
-                tabContents[i].classList.remove('active');
-            }
-            const tabButtons = document.getElementsByClassName('tab-button');
-            for (let i = 0; i < tabButtons.length; i++) {
-                tabButtons[i].classList.remove('active');
-            }
-            document.getElementById(tabName).classList.add('active');
-            event.currentTarget.classList.add('active');
             
-            if (tabName === 'analysis') {
-                updateAnalysis();
-            } else if (tabName === 'activity') {
-                displayActivityLog();
-            }
+            saveProducts();
+            console.log('All products imported successfully:', products.length);
         }
 
-        // Update UI
-        function updateUI() {
-            updateMonthDisplay();
-            displayProducts();
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-        }
-
-        // Display products with edit/delete options for admin
+        // Display products in Products tab
         function displayProducts() {
             const tbody = document.getElementById('productList');
             tbody.innerHTML = '';
@@ -2719,51 +2951,173 @@
                     headerRow.innerHTML = `<td colspan="6">${currentCategory}</td>`;
                 }
                 const row = tbody.insertRow();
-                const actionsCell = currentUser.role === 'admin' ? 
-                    `<td>
-                        <button class="edit-btn" onclick="editProduct('${product.id}')">Edit</button>
-                        <button class="admin-btn" onclick="deleteProduct('${product.id}')">Delete</button>
-                    </td>` : '';
-                
+                const isAdmin = currentUser && currentUser.role === 'admin';
                 row.innerHTML = `
                     <td>${product.id}</td>
                     <td>${product.name}</td>
                     <td>${product.category}</td>
                     <td>${product.unit}</td>
                     <td>€${product.price.toFixed(2)}</td>
-                    ${actionsCell}
+                    <td>
+                        ${isAdmin ? `
+                            <button class="edit-btn" onclick="editProduct('${product.id}')">Edit</button>
+                            <button class="admin-btn" onclick="deleteProduct('${product.id}')">Delete</button>
+                        ` : ''}
+                    </td>
                 `;
             });
+        }
+
+        function updateUI() {
+            updateMonthDisplay();
+            displayCountingProducts();
+            displayProducts();
+            updateSummary();
+            updateAnalysis();
+            displayArchive();
             
             document.getElementById('totalProducts').textContent = products.length;
-            document.getElementById('totalCategories').textContent = [...new Set(products.map(p => p.category))].length;
+            document.getElementById('totalCategories').textContent = new Set(products.map(p => p.category)).size;
+            
+            const key = `${currentLocation}|${currentMonth}`;
+            const currentCounts = monthlyData[key]?.counts || {};
+            const totalCounted = Object.values(currentCounts).reduce((sum, count) => sum + parseFloat(count), 0);
+            document.getElementById('totalCounted').textContent = formatDecimal(totalCounted);
+        }
+
+        function openTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            document.getElementById(tabName).classList.add('active');
+            document.querySelector(`button[onclick*="${tabName}"]`).classList.add('active');
+            
+            if (tabName === 'analysis') {
+                setTimeout(() => {
+                    renderCharts();
+                }, 100);
+            } else if (tabName === 'activity') {
+                displayActivityLog();
+            } else if (tabName === 'admin') {
+                showUserManagement();
+            }
+        }
+
+        function renderCharts() {
+            const key = `${currentLocation}|${currentMonth}`;
+            const currentCounts = monthlyData[key]?.counts || {};
+            
+            const categoryValues = {};
+            const productValues = [];
+            
+            products.forEach(product => {
+                const count = parseFloat(currentCounts[product.id]) || 0;
+                const value = count * product.price;
+                
+                if (count > 0) {
+                    if (!categoryValues[product.category]) {
+                        categoryValues[product.category] = 0;
+                    }
+                    categoryValues[product.category] += value;
+                    
+                    productValues.push({
+                        name: product.name,
+                        value: value
+                    });
+                }
+            });
+            
+            // Category Chart
+            const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+            new Chart(categoryCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(categoryValues),
+                    datasets: [{
+                        label: 'Value (€)',
+                        data: Object.values(categoryValues),
+                        backgroundColor: '#3498db',
+                        borderColor: '#2980b9',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '€' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Top Products Chart
+            const topProducts = productValues.sort((a, b) => b.value - a.value).slice(0, 10);
+            const topProductsCtx = document.getElementById('topProductsChart').getContext('2d');
+            new Chart(topProductsCtx, {
+                type: 'horizontalBar',
+                data: {
+                    labels: topProducts.map(p => p.name.length > 20 ? p.name.substring(0, 20) + '...' : p.name),
+                    datasets: [{
+                        label: 'Value (€)',
+                        data: topProducts.map(p => p.value),
+                        backgroundColor: '#27ae60',
+                        borderColor: '#219653',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '€' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         // ==================== ACTIVITY LOG FUNCTIONS ====================
-
-        // Display activity log
+        
         function displayActivityLog() {
-            if (!currentUser || currentUser.role !== 'admin') return;
-            
             const userFilter = document.getElementById('activityUserFilter').value;
             const actionFilter = document.getElementById('activityActionFilter').value;
             const timeFilter = document.getElementById('activityTimeFilter').value;
             
             // Update user filter options
             const userFilterSelect = document.getElementById('activityUserFilter');
-            userFilterSelect.innerHTML = '<option value="all">All Users</option>';
-            const uniqueUsers = [...new Set(activityLogs.map(log => log.user))];
-            uniqueUsers.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user;
-                option.textContent = user;
-                userFilterSelect.appendChild(option);
-            });
+            const currentOptions = Array.from(userFilterSelect.options).map(opt => opt.value);
+            const allUsers = [...new Set(activityLogs.map(log => log.user))];
+            
+            // Only update if users have changed
+            if (allUsers.length !== currentOptions.length - 1) { // -1 for "all" option
+                userFilterSelect.innerHTML = '<option value="all">All Users</option>';
+                allUsers.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user;
+                    option.textContent = user;
+                    userFilterSelect.appendChild(option);
+                });
+            }
             
             // Filter logs
-            let filteredLogs = [...activityLogs];
+            let filteredLogs = activityLogs;
             
-            // Apply filters
             if (userFilter !== 'all') {
                 filteredLogs = filteredLogs.filter(log => log.user === userFilter);
             }
@@ -2772,25 +3126,36 @@
                 filteredLogs = filteredLogs.filter(log => log.action === actionFilter);
             }
             
-            // Time filter
             const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const weekAgo = new Date(today);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const monthAgo = new Date(today);
+            monthAgo.setDate(monthAgo.getDate() - 30);
+            
             if (timeFilter === 'today') {
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                 filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= today);
             } else if (timeFilter === 'yesterday') {
-                const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                 filteredLogs = filteredLogs.filter(log => {
                     const logDate = new Date(log.timestamp);
                     return logDate >= yesterday && logDate < today;
                 });
             } else if (timeFilter === 'week') {
-                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
                 filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= weekAgo);
             } else if (timeFilter === 'month') {
-                const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
                 filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= monthAgo);
             }
+            
+            // Update statistics
+            document.getElementById('totalActivities').textContent = activityLogs.length;
+            document.getElementById('todayActivities').textContent = activityLogs.filter(log => new Date(log.timestamp) >= today).length;
+            
+            const activeUsers = new Set(activityLogs
+                .filter(log => new Date(log.timestamp) >= weekAgo)
+                .map(log => log.user));
+            document.getElementById('activeUsersCount').textContent = activeUsers.size;
             
             // Display logs
             const tbody = document.getElementById('activityLogList');
@@ -2798,147 +3163,201 @@
             
             if (filteredLogs.length === 0) {
                 const row = tbody.insertRow();
-                row.innerHTML = `<td colspan="6" style="text-align: center; padding: 20px; color: #666;">No activities found for selected filters</td>`;
+                row.innerHTML = `<td colspan="6" style="text-align: center;">No activity logs found</td>`;
                 return;
             }
             
-            filteredLogs.forEach(log => {
+            filteredLogs.slice(0, 100).forEach(log => { // Limit to 100 logs for performance
                 const row = tbody.insertRow();
-                const time = new Date(log.timestamp);
-                const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const dateStr = time.toLocaleDateString();
                 
-                // Format details based on action type
-                let detailsHtml = '';
-                switch(log.action) {
-                    case 'count_update':
-                        detailsHtml = `Product: ${log.details.productId}<br>
-                                      Change: ${log.details.change > 0 ? '+' : ''}${log.details.change}<br>
-                                      New Count: ${log.details.newCount}`;
-                        break;
-                    case 'product_add':
-                        detailsHtml = `ID: ${log.details.productId}<br>
-                                      Name: ${log.details.productName}<br>
-                                      Category: ${log.details.category}<br>
-                                      Price: €${log.details.price}`;
-                        break;
-                    case 'product_edit':
-                        detailsHtml = `Product ID: ${log.details.productId}<br>
-                                      Changes: ${Object.keys(log.details.changes).join(', ')}`;
-                        break;
-                    case 'product_delete':
-                        detailsHtml = `Deleted Product ID: ${log.details.productId}`;
-                        break;
-                    case 'user_add':
-                        detailsHtml = `Username: ${log.details.username}<br>
-                                      Role: ${log.details.role}`;
-                        break;
-                    default:
-                        detailsHtml = JSON.stringify(log.details);
-                }
+                // Format timestamp
+                const logDate = new Date(log.timestamp);
+                const timeStr = `${logDate.toLocaleDateString()} ${logDate.toLocaleTimeString()}`;
                 
-                // Action badge color
-                let badgeColor = '';
-                switch(log.action) {
-                    case 'login': badgeColor = '#27ae60'; break;
-                    case 'logout': badgeColor = '#e74c3c'; break;
-                    case 'count_update': badgeColor = '#3498db'; break;
-                    case 'product_add': badgeColor = '#2ecc71'; break;
-                    case 'product_delete': badgeColor = '#e74c3c'; break;
-                    case 'user_add': badgeColor = '#9b59b6'; break;
-                    default: badgeColor = '#f39c12';
+                // Format action with icon
+                let actionIcon = '📝';
+                if (log.action.includes('login')) actionIcon = '🔐';
+                else if (log.action.includes('logout')) actionIcon = '🚪';
+                else if (log.action.includes('count')) actionIcon = '📊';
+                else if (log.action.includes('product')) actionIcon = '📦';
+                else if (log.action.includes('user')) actionIcon = '👤';
+                else if (log.action.includes('export')) actionIcon = '📤';
+                
+                // Format details
+                let details = JSON.stringify(log.details);
+                if (details.length > 50) {
+                    details = details.substring(0, 50) + '...';
                 }
                 
                 row.innerHTML = `
-                    <td>
-                        <strong>${dateStr}</strong><br>
-                        <small>${timeStr}</small>
-                    </td>
-                    <td>
-                        <strong>${log.user}</strong><br>
-                        <small style="color: #666;">${log.userRole}</small>
-                    </td>
-                    <td>
-                        <span style="background: ${badgeColor}; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">
-                            ${log.action.replace('_', ' ')}
-                        </span>
-                    </td>
-                    <td style="max-width: 300px; word-wrap: break-word;">
-                        ${detailsHtml}
-                    </td>
+                    <td>${timeStr}</td>
+                    <td>${log.user} (${log.userRole})</td>
+                    <td>${actionIcon} ${log.action.replace('_', ' ')}</td>
+                    <td>${details}</td>
                     <td>${getLocationDisplayName(log.location)}</td>
-                    <td>${log.month ? formatMonthDisplay(log.month) : '-'}</td>
+                    <td>${formatMonthDisplay(log.month)}</td>
                 `;
             });
-            
-            // Update stats
-            document.getElementById('totalActivities').textContent = activityLogs.length;
-            
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayActivities = activityLogs.filter(log => new Date(log.timestamp) >= today).length;
-            document.getElementById('todayActivities').textContent = todayActivities;
-            
-            const uniqueActiveUsers = [...new Set(activityLogs
-                .filter(log => new Date(log.timestamp) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-                .map(log => log.user))].length;
-            document.getElementById('activeUsersCount').textContent = uniqueActiveUsers;
         }
 
-        // Export activity log to CSV
         function exportActivityLog() {
-            let csvContent = "Activity Log Export\n";
-            csvContent += "Generated: " + new Date().toLocaleString() + "\n\n";
-            csvContent += "Timestamp,User,User Role,Action,Details,Location,Month\n";
+            const wb = XLSX.utils.book_new();
+            
+            const logData = [
+                ["ACTIVITY LOG EXPORT"],
+                ["Generated:", new Date().toLocaleString()],
+                ["Total Logs:", activityLogs.length],
+                [],
+                ["Timestamp", "User", "User Role", "Action", "Details", "Location", "Month", "IP"]
+            ];
             
             activityLogs.forEach(log => {
-                const details = typeof log.details === 'object' ? 
-                    JSON.stringify(log.details).replace(/"/g, '""') : 
-                    String(log.details);
-                
-                csvContent += `"${log.timestamp}","${log.user}","${log.userRole}","${log.action}","${details}","${log.location}","${log.month}"\n`;
+                logData.push([
+                    new Date(log.timestamp).toLocaleString(),
+                    log.user,
+                    log.userRole,
+                    log.action,
+                    JSON.stringify(log.details),
+                    getLocationDisplayName(log.location),
+                    formatMonthDisplay(log.month),
+                    log.ip
+                ]);
             });
             
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `activity_log_${new Date().toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            const ws = XLSX.utils.aoa_to_sheet(logData);
+            XLSX.utils.book_append_sheet(wb, ws, "Activity Log");
             
-            logActivity('data_export', { type: 'activity_log', count: activityLogs.length });
+            // Summary sheet
+            const summaryData = [
+                ["ACTIVITY LOG SUMMARY"],
+                ["Generated:", new Date().toLocaleString()],
+                [],
+                ["TOTAL LOGS:", activityLogs.length],
+                [],
+                ["LOGS BY ACTION TYPE"]
+            ];
+            
+            const actions = {};
+            activityLogs.forEach(log => {
+                actions[log.action] = (actions[log.action] || 0) + 1;
+            });
+            
+            Object.keys(actions).sort().forEach(action => {
+                summaryData.push([action, actions[action]]);
+            });
+            
+            summaryData.push([], ["LOGS BY USER"]);
+            
+            const users = {};
+            activityLogs.forEach(log => {
+                users[log.user] = (users[log.user] || 0) + 1;
+            });
+            
+            Object.keys(users).sort().forEach(user => {
+                summaryData.push([user, users[user]]);
+            });
+            
+            const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
+            
+            const fileName = `activity_log_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            
+            logActivity('data_export', {
+                type: 'activity_log_export',
+                logCount: activityLogs.length,
+                exportedBy: currentUser.username
+            });
         }
 
-        // Clear activity log (admin only)
         function clearActivityLog() {
-            if (!confirm('Are you sure you want to clear all activity logs? This cannot be undone.')) {
-                return;
+            if (confirm('Are you sure you want to clear the entire activity log? This action cannot be undone.')) {
+                activityLogs = [];
+                localStorage.setItem('inventoryActivityLogs', JSON.stringify(activityLogs));
+                displayActivityLog();
+                
+                logActivity('log_clear', {
+                    clearedBy: currentUser.username,
+                    timestamp: new Date().toISOString()
+                });
             }
-            
-            activityLogs = [];
-            localStorage.setItem('inventoryActivityLogs', JSON.stringify([]));
-            
-            // Clear from Firebase if needed
-            if (firebaseInitialized) {
-                firebase.database().ref('activity_logs').remove()
-                    .then(() => console.log('Firebase activity logs cleared'))
-                    .catch(error => console.error('Error clearing Firebase logs:', error));
-            }
-            
-            displayActivityLog();
-            alert('Activity log cleared successfully');
-            
-            logActivity('log_cleared', { clearedBy: currentUser.username });
         }
 
-        // Initialize protection when page loads
+        // ==================== MAIN INITIALIZATION ====================
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM fully loaded - initializing protection system');
+            console.log('DOM loaded, initializing protection...');
             initializeProtection();
+            
+            // Add event listener for Enter key in protection code
+            document.getElementById('protectionCode').addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    checkProtectionCode();
+                }
+            });
+            
+            // Add event listener for Enter key in login
+            document.getElementById('password').addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    login();
+                }
+            });
         });
+
+        // ==================== HELPERS ====================
+        function editUser(username) {
+            const user = users.find(u => u.username === username);
+            if (user) {
+                document.getElementById('userModalTitle').textContent = 'Edit User';
+                document.getElementById('modalUsername').value = user.username;
+                document.getElementById('modalUsername').disabled = true;
+                document.getElementById('modalPassword').value = user.password;
+                document.getElementById('modalUserRole').value = user.role;
+                
+                const locationAccessList = document.getElementById('locationAccessList');
+                locationAccessList.innerHTML = '';
+                
+                locations.filter(l => l.active).forEach(location => {
+                    const div = document.createElement('div');
+                    div.className = 'location-checkbox';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = location.id;
+                    checkbox.checked = user.locations.includes(location.id);
+                    checkbox.id = `loc-edit-${location.id}`;
+                    
+                    const label = document.createElement('label');
+                    label.textContent = location.name;
+                    label.htmlFor = `loc-edit-${location.id}`;
+                    
+                    div.appendChild(checkbox);
+                    div.appendChild(label);
+                    locationAccessList.appendChild(div);
+                });
+                
+                document.getElementById('userModal').style.display = 'flex';
+            }
+        }
+
+        function filterUsers() {
+            const searchTerm = document.getElementById('userSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#userList tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        }
+
+        function filterLocations() {
+            const searchTerm = document.getElementById('locationSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#adminLocationList tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        }
     </script>
 </body>
 </html>
