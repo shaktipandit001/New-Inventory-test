@@ -659,12 +659,13 @@
     <div id="loginScreen" class="login-container" style="display: none;">
         <h2>Inventory System Login</h2>
         <div class="login-form">
-            <input type="text" id="username" placeholder="Username" value="" autocomplete="off">
-            <input type="password" id="password" placeholder="Password" value="" autocomplete="new-password">
+            <input type="text" id="username" placeholder="Username" value="admin" autocomplete="off">
+            <input type="password" id="password" placeholder="Password" value="admin123" autocomplete="new-password">
             <button onclick="login()">Login</button>
         </div>
         <div style="margin-top: 20px; text-align: center;">
-            <p><strong>Made by Shakti :</strong></p>
+            <p><strong>Made by Shakti</strong></p>
+            <p>Default Login: admin / admin123</p>
         </div>
     </div>
 
@@ -1125,53 +1126,37 @@
             'INVENTORY2024'  // Year-specific code
         ];
 
-        const HASHED_CODES = PROTECTION_CODES.map(code => 
-            btoa(unescape(encodeURIComponent(code))).replace(/=/g, '')
-        );
-
         function initializeProtection() {
             console.log('Initializing protection system...');
             
-            document.getElementById('protectionOverlay').style.display = 'none';
-            document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('app').style.display = 'none';
-            
+            // Check if already unlocked in this session
             const sessionUnlocked = sessionStorage.getItem('systemUnlocked');
             if (sessionUnlocked === 'true') {
-                console.log('Session unlocked - showing login screen');
+                console.log('Session already unlocked, showing login');
                 showLoginScreen();
                 return;
             }
             
+            // Check for valid session in localStorage
             const protectionSession = localStorage.getItem('protectionSession');
             if (protectionSession) {
                 try {
                     const session = JSON.parse(protectionSession);
                     if (session.expires && session.expires > Date.now()) {
-                        console.log('Valid session found in localStorage');
+                        console.log('Valid session found, showing login');
                         showLoginScreen();
                         return;
-                    } else {
-                        console.log('Session expired - clearing');
-                        localStorage.removeItem('protectionSession');
-                        sessionStorage.removeItem('systemUnlocked');
                     }
                 } catch (e) {
-                    console.error('Invalid session data:', e);
-                    localStorage.removeItem('protectionSession');
-                    sessionStorage.removeItem('systemUnlocked');
+                    console.log('Invalid session data');
                 }
             }
             
-            console.log('No valid session - showing protection screen');
+            // Show protection screen
             document.getElementById('protectionOverlay').style.display = 'flex';
-            document.getElementById('protectionCode').value = '';
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('app').style.display = 'none';
             document.getElementById('protectionError').style.display = 'none';
-            
-            setTimeout(() => {
-                const input = document.getElementById('protectionCode');
-                if (input) input.focus();
-            }, 100);
         }
 
         function checkProtectionCode() {
@@ -1186,42 +1171,25 @@
                 return;
             }
             
-            try {
-                const encodedInput = unescape(encodeURIComponent(inputCode));
-                const inputHash = btoa(encodedInput).replace(/=/g, '');
+            // Check if code matches any of the valid codes
+            if (PROTECTION_CODES.includes(inputCode)) {
+                console.log('Access granted!');
                 
-                console.log('Checking code (first 3 chars):', inputCode.substring(0, 3) + '...');
+                // Save session
+                const sessionData = {
+                    unlocked: true,
+                    timestamp: Date.now(),
+                    expires: Date.now() + (8 * 60 * 60 * 1000) // 8 hours
+                };
                 
-                if (HASHED_CODES.includes(inputHash)) {
-                    console.log('Access granted!');
-                    
-                    const sessionData = {
-                        unlocked: true,
-                        timestamp: Date.now(),
-                        expires: Date.now() + (8 * 60 * 60 * 1000)
-                    };
-                    
-                    localStorage.setItem('protectionSession', JSON.stringify(sessionData));
-                    sessionStorage.setItem('systemUnlocked', 'true');
-                    
-                    document.getElementById('protectionOverlay').style.display = 'none';
-                    errorMsg.style.display = 'none';
-                    
-                    showLoginScreen();
-                } else {
-                    console.log('Access denied - invalid code');
-                    errorMsg.textContent = 'Invalid access code. Please try again.';
-                    errorMsg.style.display = 'block';
-                    document.getElementById('protectionCode').value = '';
-                    document.getElementById('protectionCode').focus();
-                    
-                    setTimeout(() => {
-                        errorMsg.style.display = 'none';
-                    }, 3000);
-                }
-            } catch (error) {
-                console.error('Error checking code:', error);
-                errorMsg.textContent = 'System error. Please try again.';
+                localStorage.setItem('protectionSession', JSON.stringify(sessionData));
+                sessionStorage.setItem('systemUnlocked', 'true');
+                
+                document.getElementById('protectionOverlay').style.display = 'none';
+                showLoginScreen();
+            } else {
+                console.log('Access denied');
+                errorMsg.textContent = 'Invalid access code. Please try again.';
                 errorMsg.style.display = 'block';
             }
         }
@@ -1232,17 +1200,17 @@
             document.getElementById('loginScreen').style.display = 'block';
             document.getElementById('app').style.display = 'none';
             
-            document.getElementById('username').value = '';
-            document.getElementById('password').value = '';
-            
-            setTimeout(() => {
-                document.getElementById('username').focus();
-            }, 100);
+            // Set default values for easier testing
+            document.getElementById('username').value = 'admin';
+            document.getElementById('password').value = 'admin123';
         }
 
         // ==================== REAL-TIME INVENTORY SYSTEM ====================
         let products = [];
-        let locations = [];
+        let locations = [
+            { id: 'ostbahnhof', name: 'Haferkater Ostbahnhof', active: true },
+            { id: 'potsdam', name: 'Haferkater Potsdam', active: true }
+        ];
         let users = [];
         let monthlyData = {};
         let activityLogs = [];
@@ -1257,7 +1225,7 @@
         function initializeFirebase() {
             if (firebaseInitialized) {
                 console.log('Firebase already initialized');
-                return;
+                return true;
             }
             
             try {
@@ -1275,8 +1243,6 @@
                 if (!firebase.apps.length) {
                     firebase.initializeApp(firebaseConfig);
                     console.log('Firebase initialized successfully');
-                } else {
-                    console.log('Firebase already initialized');
                 }
                 
                 firebaseInitialized = true;
@@ -1292,165 +1258,73 @@
                     }
                 });
                 
-                // AUTO-CREATE ADMIN USER IF NOT EXISTS
-                setTimeout(() => {
-                    firebase.database().ref('users/admin').once('value')
-                        .then(snapshot => {
-                            if (!snapshot.exists()) {
-                                console.log('No admin user found, creating one...');
-                                const adminData = {
-                                    username: 'admin',
-                                    password: 'admin123',
-                                    role: 'admin',
-                                    locations: ['ostbahnhof', 'potsdam'],
-                                    createdAt: new Date().toISOString(),
-                                    lastLogin: null
-                                };
-                                
-                                firebase.database().ref('users/admin').set(adminData)
-                                    .then(() => {
-                                        console.log('✅ Auto-created admin user');
-                                        console.log('Username: admin');
-                                        console.log('Password: admin123');
-                                    })
-                                    .catch(error => {
-                                        console.error('Error creating admin:', error);
-                                    });
-                            } else {
-                                console.log('Admin user already exists');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error checking admin:', error);
-                        });
-                    
-                    // AUTO-CREATE DEFAULT LOCATIONS
-                    firebase.database().ref('locations').once('value')
-                        .then(snapshot => {
-                            if (!snapshot.exists()) {
-                                const defaultLocations = {
-                                    ostbahnhof: { name: 'Haferkater Ostbahnhof', active: true },
-                                    potsdam: { name: 'Haferkater Potsdam', active: true }
-                                };
-                                
-                                firebase.database().ref('locations').set(defaultLocations)
-                                    .then(() => console.log('✅ Auto-created default locations'));
-                            }
-                        });
-                    
-                    // AUTO-IMPORT PRODUCTS IF EMPTY
-                    firebase.database().ref('products').once('value')
-                        .then(snapshot => {
-                            if (!snapshot.exists() || Object.keys(snapshot.val()).length === 0) {
-                                console.log('No products found, importing all products...');
-                                importAllProductsToFirebase();
-                            } else {
-                                console.log('Products already exist in Firebase');
-                            }
-                        });
-                }, 1000);
-                
-                // Load all data from Firebase
-                loadAllData();
+                // Load data from Firebase
+                loadAllDataFromFirebase();
+                return true;
                 
             } catch (error) {
                 console.error('Firebase initialization error:', error);
                 alert('Warning: Firebase initialization failed. Working in offline mode.');
                 isOnline = false;
+                firebaseInitialized = false;
                 updateSyncStatus();
                 loadFromLocalStorage();
+                return false;
             }
         }
 
-        function updateSyncStatus() {
-            const syncStatus = document.getElementById('syncStatus');
-            if (!syncStatus) return;
+        function loadAllDataFromFirebase() {
+            if (!firebaseInitialized) return;
             
-            syncStatus.style.display = 'flex';
-            
-            if (isOnline) {
-                syncStatus.className = 'sync-status sync-online';
-                syncStatus.innerHTML = '<span class="sync-icon">✓</span><span>Synced with Server</span>';
-            } else {
-                syncStatus.className = 'sync-status sync-offline';
-                syncStatus.innerHTML = '<span class="sync-icon">⚠</span><span>Offline Mode (Changes queued)</span>';
-            }
-        }
-
-        function syncPendingChanges() {
-            if (!isOnline || pendingChanges.length === 0) return;
-            
-            console.log(`Syncing ${pendingChanges.length} pending changes...`);
-            
-            pendingChanges.forEach(change => {
-                switch(change.type) {
-                    case 'product':
-                        saveProductToFirebase(change.data);
-                        break;
-                    case 'user':
-                        saveUserToFirebase(change.data);
-                        break;
-                    case 'count':
-                        saveCountToFirebase(change.data);
-                        break;
-                    case 'activity':
-                        saveActivityToFirebase(change.data);
-                        break;
-                }
-            });
-            
-            pendingChanges = [];
-        }
-
-        // ==================== DATA LOADING FUNCTIONS ====================
-        function loadAllData() {
-            if (!firebaseInitialized) {
-                loadFromLocalStorage();
-                return;
-            }
-            
-            console.log('Loading all data from Firebase...');
+            console.log('Loading data from Firebase...');
             
             // Load products
             firebase.database().ref('products').on('value', (snapshot) => {
                 const firebaseProducts = snapshot.val();
-                
                 if (firebaseProducts) {
                     products = Object.keys(firebaseProducts).map(key => ({
                         id: key,
                         ...firebaseProducts[key]
                     }));
                     console.log(`Loaded ${products.length} products from Firebase`);
+                    
+                    // Import products if empty
+                    if (products.length === 0) {
+                        console.log('No products found, importing all products...');
+                        importAllProductsToFirebase();
+                    }
+                    
+                    // Update UI if needed
+                    updateCategoryFilter();
+                    if (currentUser) {
+                        displayProducts();
+                        displayCountingProducts();
+                    }
                 }
-                
-                // Update UI if needed
-                if (document.getElementById('products')?.classList.contains('active')) {
-                    displayProducts();
-                }
-                if (document.getElementById('counting')?.classList.contains('active')) {
-                    displayCountingProducts();
-                }
-                
-                updateCategoryFilter();
             });
             
             // Load users
             firebase.database().ref('users').on('value', (snapshot) => {
                 const firebaseUsers = snapshot.val();
-                
                 if (firebaseUsers) {
                     users = Object.keys(firebaseUsers).map(key => ({
                         id: key,
                         ...firebaseUsers[key]
                     }));
                     console.log(`Loaded ${users.length} users from Firebase`);
+                    
+                    // Create admin user if not exists
+                    if (!users.find(u => u.username === 'admin')) {
+                        createDefaultAdminUser();
+                    }
+                } else {
+                    createDefaultAdminUser();
                 }
             });
             
             // Load locations
             firebase.database().ref('locations').on('value', (snapshot) => {
                 const firebaseLocations = snapshot.val();
-                
                 if (firebaseLocations) {
                     locations = Object.keys(firebaseLocations).map(key => ({
                         id: key,
@@ -1458,43 +1332,50 @@
                     }));
                     console.log(`Loaded ${locations.length} locations from Firebase`);
                 }
-                
-                updateLocationSelector();
             });
             
             // Load monthly data
             firebase.database().ref('monthly_data').on('value', (snapshot) => {
                 const firebaseMonthlyData = snapshot.val();
-                
                 if (firebaseMonthlyData) {
                     monthlyData = firebaseMonthlyData;
-                    console.log(`Loaded monthly data from Firebase`);
-                }
-                
-                if (currentUser) {
-                    updateUI();
-                    displayArchive();
+                    console.log('Loaded monthly data from Firebase');
                 }
             });
             
             // Load activity logs
             firebase.database().ref('activity_logs').on('value', (snapshot) => {
                 const firebaseActivities = snapshot.val();
-                
                 if (firebaseActivities) {
-                    // Convert to array and sort by timestamp
                     activityLogs = Object.keys(firebaseActivities).map(key => ({
                         id: key,
                         ...firebaseActivities[key]
                     })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                    
                     console.log(`Loaded ${activityLogs.length} activity logs from Firebase`);
                 }
-                
-                if (document.getElementById('activity')?.classList.contains('active')) {
-                    displayActivityLog();
-                }
             });
+        }
+
+        function createDefaultAdminUser() {
+            const adminData = {
+                username: 'admin',
+                password: 'admin123',
+                role: 'admin',
+                locations: ['ostbahnhof', 'potsdam'],
+                createdAt: new Date().toISOString(),
+                lastLogin: null
+            };
+            
+            firebase.database().ref('users/admin').set(adminData)
+                .then(() => {
+                    console.log('✅ Auto-created admin user');
+                    console.log('Username: admin');
+                    console.log('Password: admin123');
+                    users.push({ id: 'admin', ...adminData });
+                })
+                .catch(error => {
+                    console.error('Error creating admin:', error);
+                });
         }
 
         function loadFromLocalStorage() {
@@ -1502,15 +1383,13 @@
             
             products = JSON.parse(localStorage.getItem('inventoryProducts')) || [];
             users = JSON.parse(localStorage.getItem('inventoryUsers')) || [];
-            locations = JSON.parse(localStorage.getItem('inventoryLocations')) || [];
+            locations = JSON.parse(localStorage.getItem('inventoryLocations')) || locations;
             monthlyData = JSON.parse(localStorage.getItem('monthlyInventoryData')) || {};
             activityLogs = JSON.parse(localStorage.getItem('inventoryActivityLogs')) || [];
             
-            if (products.length === 0) {
-                importAllProducts();
-            }
+            // Create default admin if no users
             if (users.length === 0) {
-                users.push({
+                const adminUser = {
                     id: 'admin',
                     username: 'admin',
                     password: 'admin123',
@@ -1518,20 +1397,22 @@
                     locations: ['ostbahnhof', 'potsdam'],
                     createdAt: new Date().toISOString(),
                     lastLogin: null
-                });
+                };
+                users.push(adminUser);
                 saveToLocalStorage('inventoryUsers', users);
             }
-            if (locations.length === 0) {
-                locations = [
-                    { id: 'ostbahnhof', name: 'Haferkater Ostbahnhof', active: true },
-                    { id: 'potsdam', name: 'Haferkater Potsdam', active: true }
-                ];
-                saveToLocalStorage('inventoryLocations', locations);
+            
+            // Import products if empty
+            if (products.length === 0) {
+                console.log('No products found, importing all products...');
+                importAllProducts();
             }
         }
 
         // ==================== COMPLETE PRODUCT LIST ====================
         function importAllProductsToFirebase() {
+            console.log('Importing all products to Firebase...');
+            
             const allProducts = [
                 // Verbrauch (26 products)
                 { id: '382224', name: 'B1774_Porridgebecher 500St', unit: 'stuck', category: 'Verbrauch', price: 0.075 },
@@ -1711,24 +1592,20 @@
                 { id: '18K1257p0110', name: 'Guthabenkarte QR Code, 1', unit: 'Stück', category: 'Retail', price: 0.98 }
             ];
             
+            // Save to Firebase
+            allProducts.forEach(product => {
+                const productId = product.id;
+                const { id, ...productData } = product;
+                firebase.database().ref(`products/${productId}`).set(productData);
+            });
+            
             products = allProducts;
-            
-            if (isOnline && firebaseInitialized) {
-                allProducts.forEach(product => {
-                    const productId = product.id;
-                    const { id, ...productData } = product;
-                    firebase.database().ref(`products/${productId}`).set(productData);
-                });
-                console.log('All 155 products imported to Firebase');
-            }
-            
-            saveToLocalStorage('inventoryProducts', products);
+            console.log('All 155 products imported to Firebase');
         }
 
         function importAllProducts() {
-            // Same function for offline mode
             const allProducts = [
-                // EXACT SAME LIST AS ABOVE - ALL 155 PRODUCTS
+                // Same list as above - ALL 155 PRODUCTS
                 { id: '382224', name: 'B1774_Porridgebecher 500St', unit: 'stuck', category: 'Verbrauch', price: 0.075 },
                 { id: '252437', name: 'B1774_Deckel Porridge Be.500St', unit: 'stuck', category: 'Verbrauch', price: 0.071 },
                 // ... ALL 155 PRODUCTS HERE
@@ -1739,209 +1616,27 @@
             saveToLocalStorage('inventoryProducts', products);
         }
 
-        // ==================== FIREBASE SAVE FUNCTIONS ====================
-        function saveProductToFirebase(product) {
-            if (!firebaseInitialized) {
-                pendingChanges.push({ type: 'product', data: product });
-                saveToLocalStorage('inventoryProducts', products);
-                return;
-            }
-            
-            const productId = product.id;
-            const { id, ...productData } = product;
-            
-            firebase.database().ref(`products/${productId}`).set(productData)
-                .then(() => console.log(`Product ${productId} saved to Firebase`))
-                .catch(error => {
-                    console.error('Error saving product to Firebase:', error);
-                    pendingChanges.push({ type: 'product', data: product });
-                });
-                
-            saveToLocalStorage('inventoryProducts', products);
-        }
-
-        function saveUserToFirebase(user) {
-            if (!firebaseInitialized) {
-                pendingChanges.push({ type: 'user', data: user });
-                saveToLocalStorage('inventoryUsers', users);
-                return;
-            }
-            
-            const userId = user.id || user.username;
-            const { id, ...userData } = user;
-            
-            firebase.database().ref(`users/${userId}`).set(userData)
-                .then(() => console.log(`User ${userId} saved to Firebase`))
-                .catch(error => {
-                    console.error('Error saving user to Firebase:', error);
-                    pendingChanges.push({ type: 'user', data: user });
-                });
-                
-            saveToLocalStorage('inventoryUsers', users);
-        }
-
-        function saveCountToFirebase(data) {
-            if (!firebaseInitialized) {
-                pendingChanges.push({ type: 'count', data: data });
-                saveToLocalStorage('monthlyInventoryData', monthlyData);
-                return;
-            }
-            
-            const { location, month, productId, count } = data;
-            const key = `${location}|${month}`;
-            
-            firebase.database().ref(`monthly_data/${key}/counts/${productId}`).set(count)
-                .then(() => console.log(`Count for ${productId} saved to Firebase`))
-                .catch(error => {
-                    console.error('Error saving count to Firebase:', error);
-                    pendingChanges.push({ type: 'count', data: data });
-                });
-                
-            saveToLocalStorage('monthlyInventoryData', monthlyData);
-        }
-
-        function saveActivityToFirebase(activity) {
-            if (!firebaseInitialized) {
-                pendingChanges.push({ type: 'activity', data: activity });
-                saveToLocalStorage('inventoryActivityLogs', activityLogs);
-                return;
-            }
-            
-            const activityId = activity.id;
-            const { id, ...activityData } = activity;
-            
-            firebase.database().ref(`activity_logs/${activityId}`).set(activityData)
-                .then(() => console.log(`Activity ${activityId} saved to Firebase`))
-                .catch(error => {
-                    console.error('Error saving activity to Firebase:', error);
-                    pendingChanges.push({ type: 'activity', data: activity });
-                });
-                
-            saveToLocalStorage('inventoryActivityLogs', activityLogs);
-        }
-
-        function saveToLocalStorage(key, data) {
-            try {
-                localStorage.setItem(key, JSON.stringify(data));
-            } catch (error) {
-                console.error(`Error saving to localStorage for ${key}:`, error);
-            }
-        }
-
-        // ==================== ACTIVITY TRACKING ====================
-        function logActivity(action, details = {}) {
-            if (!currentUser) return;
-            
-            const activity = {
-                id: 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-                timestamp: new Date().toISOString(),
-                user: currentUser.username,
-                userRole: currentUser.role,
-                location: currentLocation,
-                month: currentMonth,
-                action: action,
-                details: details
-            };
-            
-            console.log('Activity logged:', activity);
-            
-            // Add to local array
-            activityLogs.unshift(activity);
-            if (activityLogs.length > 1000) activityLogs = activityLogs.slice(0, 1000);
-            
-            // Save to Firebase
-            saveActivityToFirebase(activity);
-            
-            // Update display if on activity tab
-            if (document.getElementById('activity')?.classList.contains('active')) {
-                displayActivityLog();
-            }
-        }
-
-        // ==================== FIXED LOGIN SYSTEM ====================
+        // ==================== SIMPLIFIED LOGIN SYSTEM ====================
         function login() {
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
+            
+            console.log('Login attempt for:', username);
             
             if (!username || !password) {
                 alert('Please enter both username and password');
                 return;
             }
             
-            console.log('=== LOGIN ATTEMPT ===');
-            console.log('Username:', username);
-            console.log('Is Firebase initialized:', firebaseInitialized);
-            
-            // Try to load users directly from Firebase first
-            if (firebaseInitialized && isOnline) {
-                console.log('Loading users from Firebase...');
-                
-                firebase.database().ref('users').once('value')
-                    .then(snapshot => {
-                        const firebaseUsers = snapshot.val();
-                        console.log('Firebase users:', firebaseUsers);
-                        
-                        if (firebaseUsers) {
-                            // Convert Firebase object to array
-                            users = Object.keys(firebaseUsers).map(key => ({
-                                id: key,
-                                ...firebaseUsers[key]
-                            }));
-                            console.log('Users array loaded:', users);
-                            
-                            // Check login
-                            checkUserLogin(username, password);
-                        } else {
-                            console.log('No users in Firebase, creating default admin...');
-                            // Create default admin
-                            const adminUser = {
-                                id: 'admin',
-                                username: 'admin',
-                                password: 'admin123',
-                                role: 'admin',
-                                locations: ['ostbahnhof', 'potsdam'],
-                                createdAt: new Date().toISOString(),
-                                lastLogin: null
-                            };
-                            
-                            firebase.database().ref('users/admin').set(adminUser)
-                                .then(() => {
-                                    console.log('Default admin created');
-                                    users = [adminUser];
-                                    
-                                    // Auto-login if credentials match
-                                    if (username === 'admin' && password === 'admin123') {
-                                        completeLogin(adminUser);
-                                    } else {
-                                        alert('No users found. Default admin created.\nTry: admin / admin123');
-                                        document.getElementById('username').value = 'admin';
-                                        document.getElementById('password').value = 'admin123';
-                                    }
-                                });
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error loading users from Firebase:', error);
-                        checkUserLogin(username, password); // Fallback to local
-                    });
-            } else {
-                console.log('Using local users (offline mode)');
-                checkUserLogin(username, password);
-            }
-        }
-
-        function checkUserLogin(username, password) {
-            console.log('Checking against users array:', users);
-            
+            // Check against users array
             const user = users.find(u => u.username === username && u.password === password);
             
             if (user) {
-                console.log('✅ Login successful for:', username);
+                console.log('Login successful for:', username);
                 completeLogin(user);
             } else {
-                console.log('❌ Login failed');
-                console.log('Available users:', users.map(u => u.username));
-                alert('Invalid username or password. Try:\nUsername: admin\nPassword: admin123');
+                console.log('Login failed');
+                alert('Invalid username or password.\n\nTry:\nUsername: admin\nPassword: admin123');
                 document.getElementById('password').value = '';
                 document.getElementById('password').focus();
             }
@@ -1951,36 +1646,27 @@
             currentUser = user;
             user.lastLogin = new Date().toISOString();
             
-            // Update last login in Firebase
+            // Update last login in Firebase if online
             if (firebaseInitialized && user.id) {
                 firebase.database().ref(`users/${user.id}/lastLogin`).set(user.lastLogin);
             }
             
-            // Log login activity
-            logActivity('login', { 
-                username: user.username, 
-                role: user.role,
-                locations: user.locations 
-            });
-            
+            // Initialize app
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('app').style.display = 'block';
             
-            // Initialize app
             if (!firebaseInitialized) {
                 initializeFirebase();
             }
+            
             init();
+            
+            console.log('User logged in:', currentUser.username);
         }
 
         function logout() {
-            if (currentUser) {
-                logActivity('logout', { username: currentUser.username });
-            }
-            
             console.log('Logging out...');
             currentUser = null;
-            firebaseInitialized = false;
             
             sessionStorage.removeItem('systemUnlocked');
             localStorage.removeItem('protectionSession');
@@ -1990,24 +1676,19 @@
 
         // ==================== INITIALIZATION ====================
         function init() {
-            console.log('Initializing inventory app...');
+            console.log('Initializing app for user:', currentUser.username);
             
-            if (products.length === 0 && !firebaseInitialized) {
-                importAllProducts();
-            }
-            
+            // Setup UI
+            updateUserInterfaceBasedOnRole();
             setupLocationSelector();
             updateCategoryFilter();
             setupYearMonthSelectors();
             setCurrentMonth();
             updateUI();
             displayArchive();
-            updateUserInterfaceBasedOnRole();
-            
             updateSyncStatus();
         }
 
-        // ==================== USER MANAGEMENT ====================
         function updateUserInterfaceBasedOnRole() {
             if (!currentUser) return;
             
@@ -2020,337 +1701,190 @@
             document.querySelectorAll('.admin-tab').forEach(el => {
                 el.style.display = isAdmin ? 'block' : 'none';
             });
-            
-            updateLocationSelector();
-        }
-
-        // ==================== PRODUCT MANAGEMENT ====================
-        function showAddProductForm() {
-            document.getElementById('productModalTitle').textContent = 'Add New Product';
-            document.getElementById('modalProductId').value = '';
-            document.getElementById('modalProductId').disabled = false;
-            document.getElementById('modalProductName').value = '';
-            document.getElementById('modalProductCategory').value = '';
-            document.getElementById('modalProductUnit').value = '';
-            document.getElementById('modalProductPrice').value = '';
-            document.getElementById('productModal').style.display = 'flex';
-        }
-
-        function saveProduct() {
-            const id = document.getElementById('modalProductId').value.trim();
-            const name = document.getElementById('modalProductName').value.trim();
-            const category = document.getElementById('modalProductCategory').value.trim();
-            const unit = document.getElementById('modalProductUnit').value.trim();
-            const price = parseFloat(document.getElementById('modalProductPrice').value);
-            
-            if (!id || !name || !category || !unit || isNaN(price)) {
-                alert('Please fill all fields correctly');
-                return;
-            }
-            
-            const existingProduct = products.find(p => p.id === id);
-            
-            if (existingProduct) {
-                // Update existing product
-                const oldData = { ...existingProduct };
-                existingProduct.name = name;
-                existingProduct.category = category;
-                existingProduct.unit = unit;
-                existingProduct.price = price;
-                
-                logActivity('product_edit', {
-                    productId: id,
-                    changes: {
-                        name: { old: oldData.name, new: name },
-                        category: { old: oldData.category, new: category },
-                        unit: { old: oldData.unit, new: unit },
-                        price: { old: oldData.price, new: price }
-                    }
-                });
-                
-                saveProductToFirebase(existingProduct);
-            } else {
-                // Add new product
-                const newProduct = { id, name, category, unit, price };
-                products.push(newProduct);
-                
-                logActivity('product_add', {
-                    productId: id,
-                    productName: name,
-                    category: category,
-                    unit: unit,
-                    price: price
-                });
-                
-                saveProductToFirebase(newProduct);
-            }
-            
-            closeModal('productModal');
-            displayProducts();
-            updateCategoryFilter();
-            alert(existingProduct ? 'Product updated successfully' : 'Product added successfully');
-        }
-
-        function deleteProduct(productId) {
-            const product = products.find(p => p.id === productId);
-            if (!product) return;
-            
-            if (confirm(`Are you sure you want to delete "${product.name}"?`)) {
-                logActivity('product_delete', {
-                    productId: productId,
-                    productName: product.name,
-                    category: product.category,
-                    price: product.price
-                });
-                
-                products = products.filter(p => p.id !== productId);
-                
-                // Remove from Firebase
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref(`products/${productId}`).remove()
-                        .then(() => console.log(`Product ${productId} deleted from Firebase`))
-                        .catch(error => console.error('Error deleting product:', error));
-                }
-                
-                saveToLocalStorage('inventoryProducts', products);
-                displayProducts();
-                
-                // Remove from monthly data
-                Object.keys(monthlyData).forEach(key => {
-                    if (monthlyData[key].counts && monthlyData[key].counts[productId]) {
-                        delete monthlyData[key].counts[productId];
-                    }
-                });
-                saveToLocalStorage('monthlyInventoryData', monthlyData);
-            }
-        }
-
-        // ==================== COUNTING FUNCTIONS ====================
-        function incrementCount(productId, increment = 1) {
-            if (isCountingClosed()) return;
-            
-            const key = `${currentLocation}|${currentMonth}`;
-            
-            if (!monthlyData[key]) {
-                monthlyData[key] = {
-                    counts: {},
-                    created: new Date().toISOString(),
-                    status: 'open'
-                };
-            }
-            
-            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
-            const product = products.find(p => p.id === productId);
-            
-            monthlyData[key].counts[productId] = currentCount + increment;
-            
-            // Save to Firebase
-            saveCountToFirebase({
-                location: currentLocation,
-                month: currentMonth,
-                productId: productId,
-                count: currentCount + increment
-            });
-            
-            logActivity('count_update', {
-                productId: productId,
-                productName: product ? product.name : 'Unknown',
-                change: increment,
-                previousCount: currentCount,
-                newCount: currentCount + increment,
-                location: currentLocation,
-                month: currentMonth
-            });
-            
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-        }
-
-        function decrementCount(productId, decrement = 1) {
-            if (isCountingClosed()) return;
-            
-            const key = `${currentLocation}|${currentMonth}`;
-            
-            if (!monthlyData[key]) {
-                monthlyData[key] = {
-                    counts: {},
-                    created: new Date().toISOString(),
-                    status: 'open'
-                };
-            }
-            
-            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
-            const newCount = Math.max(0, currentCount - decrement);
-            const product = products.find(p => p.id === productId);
-            
-            monthlyData[key].counts[productId] = newCount;
-            
-            // Save to Firebase
-            saveCountToFirebase({
-                location: currentLocation,
-                month: currentMonth,
-                productId: productId,
-                count: newCount
-            });
-            
-            logActivity('count_update', {
-                productId: productId,
-                productName: product ? product.name : 'Unknown',
-                change: -decrement,
-                previousCount: currentCount,
-                newCount: newCount,
-                location: currentLocation,
-                month: currentMonth
-            });
-            
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-        }
-
-        // ==================== ACTIVITY LOG FUNCTIONS ====================
-        function displayActivityLog() {
-            if (!currentUser || currentUser.role !== 'admin') return;
-            
-            const userFilter = document.getElementById('activityUserFilter').value;
-            const actionFilter = document.getElementById('activityActionFilter').value;
-            const timeFilter = document.getElementById('activityTimeFilter').value;
-            
-            // Update user filter options
-            const userFilterSelect = document.getElementById('activityUserFilter');
-            userFilterSelect.innerHTML = '<option value="all">All Users</option>';
-            const uniqueUsers = [...new Set(activityLogs.map(log => log.user))];
-            uniqueUsers.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user;
-                option.textContent = user;
-                userFilterSelect.appendChild(option);
-            });
-            
-            // Filter logs
-            let filteredLogs = [...activityLogs];
-            
-            if (userFilter !== 'all') {
-                filteredLogs = filteredLogs.filter(log => log.user === userFilter);
-            }
-            
-            if (actionFilter !== 'all') {
-                filteredLogs = filteredLogs.filter(log => log.action === actionFilter);
-            }
-            
-            // Time filter
-            const now = new Date();
-            if (timeFilter === 'today') {
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= today);
-            } else if (timeFilter === 'yesterday') {
-                const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                filteredLogs = filteredLogs.filter(log => {
-                    const logDate = new Date(log.timestamp);
-                    return logDate >= yesterday && logDate < today;
-                });
-            } else if (timeFilter === 'week') {
-                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= weekAgo);
-            } else if (timeFilter === 'month') {
-                const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= monthAgo);
-            }
-            
-            // Display logs
-            const tbody = document.getElementById('activityLogList');
-            tbody.innerHTML = '';
-            
-            if (filteredLogs.length === 0) {
-                const row = tbody.insertRow();
-                row.innerHTML = `<td colspan="6" style="text-align: center; padding: 20px; color: #666;">No activities found for selected filters</td>`;
-                return;
-            }
-            
-            filteredLogs.forEach(log => {
-                const row = tbody.insertRow();
-                const time = new Date(log.timestamp);
-                const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const dateStr = time.toLocaleDateString();
-                
-                let detailsHtml = '';
-                switch(log.action) {
-                    case 'count_update':
-                        detailsHtml = `Product: ${log.details.productId}<br>
-                                      Change: ${log.details.change > 0 ? '+' : ''}${log.details.change}<br>
-                                      New Count: ${log.details.newCount}`;
-                        break;
-                    case 'product_add':
-                        detailsHtml = `ID: ${log.details.productId}<br>
-                                      Name: ${log.details.productName}<br>
-                                      Category: ${log.details.category}<br>
-                                      Price: €${log.details.price}`;
-                        break;
-                    case 'product_edit':
-                        detailsHtml = `Product ID: ${log.details.productId}<br>
-                                      Changes: ${Object.keys(log.details.changes).join(', ')}`;
-                        break;
-                    case 'product_delete':
-                        detailsHtml = `Deleted Product ID: ${log.details.productId}`;
-                        break;
-                    case 'user_add':
-                        detailsHtml = `Username: ${log.details.username}<br>
-                                      Role: ${log.details.role}`;
-                        break;
-                    default:
-                        detailsHtml = JSON.stringify(log.details);
-                }
-                
-                let badgeColor = '';
-                switch(log.action) {
-                    case 'login': badgeColor = '#27ae60'; break;
-                    case 'logout': badgeColor = '#e74c3c'; break;
-                    case 'count_update': badgeColor = '#3498db'; break;
-                    case 'product_add': badgeColor = '#2ecc71'; break;
-                    case 'product_delete': badgeColor = '#e74c3c'; break;
-                    case 'user_add': badgeColor = '#9b59b6'; break;
-                    default: badgeColor = '#f39c12';
-                }
-                
-                row.innerHTML = `
-                    <td>
-                        <strong>${dateStr}</strong><br>
-                        <small>${timeStr}</small>
-                    </td>
-                    <td>
-                        <strong>${log.user}</strong><br>
-                        <small style="color: #666;">${log.userRole}</small>
-                    </td>
-                    <td>
-                        <span style="background: ${badgeColor}; color: white; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">
-                            ${log.action.replace('_', ' ')}
-                        </span>
-                    </td>
-                    <td style="max-width: 300px; word-wrap: break-word;">
-                        ${detailsHtml}
-                    </td>
-                    <td>${getLocationDisplayName(log.location)}</td>
-                    <td>${log.month ? formatMonthDisplay(log.month) : '-'}</td>
-                `;
-            });
-            
-            // Update stats
-            document.getElementById('totalActivities').textContent = activityLogs.length;
-            
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayActivities = activityLogs.filter(log => new Date(log.timestamp) >= today).length;
-            document.getElementById('todayActivities').textContent = todayActivities;
-            
-            const uniqueActiveUsers = [...new Set(activityLogs
-                .filter(log => new Date(log.timestamp) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-                .map(log => log.user))].length;
-            document.getElementById('activeUsersCount').textContent = uniqueActiveUsers;
         }
 
         // ==================== ESSENTIAL FUNCTIONS ====================
+        function updateSyncStatus() {
+            const syncStatus = document.getElementById('syncStatus');
+            if (!syncStatus) return;
+            
+            syncStatus.style.display = 'flex';
+            
+            if (isOnline) {
+                syncStatus.className = 'sync-status sync-online';
+                syncStatus.innerHTML = '<span class="sync-icon">✓</span><span>Synced with Server</span>';
+            } else {
+                syncStatus.className = 'sync-status sync-offline';
+                syncStatus.innerHTML = '<span class="sync-icon">⚠</span><span>Offline Mode</span>';
+            }
+        }
+
+        function saveToLocalStorage(key, data) {
+            try {
+                localStorage.setItem(key, JSON.stringify(data));
+            } catch (error) {
+                console.error(`Error saving to localStorage:`, error);
+            }
+        }
+
+        function openTab(tabName) {
+            const tabContents = document.getElementsByClassName('tab-content');
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove('active');
+            }
+            const tabButtons = document.getElementsByClassName('tab-button');
+            for (let i = 0; i < tabButtons.length; i++) {
+                tabButtons[i].classList.remove('active');
+            }
+            
+            const targetTab = document.getElementById(tabName);
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
+            
+            // Find and activate the clicked button
+            const clickedButton = event?.currentTarget;
+            if (clickedButton) {
+                clickedButton.classList.add('active');
+            }
+            
+            // Update specific tabs
+            if (tabName === 'analysis') {
+                updateAnalysis();
+            } else if (tabName === 'activity') {
+                displayActivityLog();
+            }
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        function getLocationDisplayName(locationId) {
+            const location = locations.find(l => l.id === locationId);
+            return location ? location.name : locationId;
+        }
+
+        function formatMonthDisplay(month) {
+            const [year, monthNum] = month.split('-');
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'];
+            return `${monthNames[parseInt(monthNum) - 1]} ${year}`;
+        }
+
+        // ==================== LOCATION FUNCTIONS ====================
+        function setupLocationSelector() {
+            const selector = document.getElementById('locationSelector');
+            if (!selector) return;
+            
+            selector.innerHTML = '';
+            
+            const userLocations = currentUser ? currentUser.locations : ['ostbahnhof', 'potsdam'];
+            
+            userLocations.forEach(locationId => {
+                const location = locations.find(l => l.id === locationId);
+                if (location && location.active) {
+                    const button = document.createElement('button');
+                    button.className = `location-btn ${locationId === currentLocation ? 'active' : ''}`;
+                    button.textContent = location.name;
+                    button.onclick = () => setLocation(locationId);
+                    selector.appendChild(button);
+                }
+            });
+            
+            document.getElementById('locationDisplay').textContent = getLocationDisplayName(currentLocation);
+            document.getElementById('analysisLocation').textContent = getLocationDisplayName(currentLocation);
+            document.getElementById('summaryLocation').textContent = getLocationDisplayName(currentLocation);
+        }
+
+        function setLocation(locationId) {
+            currentLocation = locationId;
+            setupLocationSelector();
+            displayCountingProducts();
+            updateSummary();
+            updateAnalysis();
+        }
+
+        // ==================== MONTH/YEAR FUNCTIONS ====================
+        function setupYearMonthSelectors() {
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            
+            if (!yearSelect || !monthSelect) return;
+            
+            // Years: 2023-2030
+            yearSelect.innerHTML = '<option value="">Select Year</option>';
+            for (let year = 2023; year <= 2030; year++) {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearSelect.appendChild(option);
+            }
+            
+            updateMonthOptions();
+        }
+
+        function updateMonthOptions() {
+            const yearSelect = document.getElementById('yearSelect');
+            const monthSelect = document.getElementById('monthSelect');
+            
+            if (!yearSelect || !monthSelect) return;
+            
+            const selectedYear = yearSelect.value;
+            monthSelect.innerHTML = '<option value="">Select Month</option>';
+            
+            if (selectedYear) {
+                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                    'July', 'August', 'September', 'October', 'November', 'December'];
+                
+                for (let i = 1; i <= 12; i++) {
+                    const option = document.createElement('option');
+                    option.value = `${selectedYear}-${i.toString().padStart(2, '0')}`;
+                    option.textContent = `${monthNames[i-1]} ${selectedYear}`;
+                    monthSelect.appendChild(option);
+                }
+            }
+        }
+
+        function setCurrentMonth() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            currentMonth = `${year}-${month}`;
+            updateMonthDisplay();
+        }
+
+        function changeMonth() {
+            const monthSelect = document.getElementById('monthSelect');
+            if (monthSelect.value) {
+                currentMonth = monthSelect.value;
+                updateMonthDisplay();
+                displayCountingProducts();
+                updateSummary();
+                updateAnalysis();
+            }
+        }
+
+        function updateMonthDisplay() {
+            document.getElementById('currentPeriodDisplay').textContent = formatMonthDisplay(currentMonth);
+            
+            const key = `${currentLocation}|${currentMonth}`;
+            const status = monthlyData[key]?.status || 'open';
+            document.getElementById('countingStatus').textContent = status === 'open' ? 'Open for Counting' : 'Closed';
+            
+            const statusBanner = document.getElementById('statusBanner');
+            if (status === 'closed') {
+                statusBanner.className = 'status-banner status-closed';
+                statusBanner.textContent = '⚠ Counting Period CLOSED - Read Only Mode';
+                document.getElementById('readonlyOverlay').style.display = 'flex';
+            } else {
+                statusBanner.className = 'status-banner status-open';
+                statusBanner.textContent = '✓ Counting Period OPEN - You can modify quantities';
+                document.getElementById('readonlyOverlay').style.display = 'none';
+            }
+        }
+
+        // ==================== PRODUCT MANAGEMENT ====================
         function updateCategoryFilter() {
             const filter1 = document.getElementById('categoryFilter');
             const filter2 = document.getElementById('countingCategoryFilter');
@@ -2425,6 +1959,21 @@
             }
         }
 
+        function filterProducts() {
+            displayProducts();
+        }
+
+        function showAddProductForm() {
+            document.getElementById('productModalTitle').textContent = 'Add New Product';
+            document.getElementById('modalProductId').value = '';
+            document.getElementById('modalProductId').disabled = false;
+            document.getElementById('modalProductName').value = '';
+            document.getElementById('modalProductCategory').value = '';
+            document.getElementById('modalProductUnit').value = '';
+            document.getElementById('modalProductPrice').value = '';
+            document.getElementById('productModal').style.display = 'flex';
+        }
+
         function editProduct(productId) {
             const product = products.find(p => p.id === productId);
             if (product) {
@@ -2439,231 +1988,41 @@
             }
         }
 
-        function openTab(tabName) {
-            const tabContents = document.getElementsByClassName('tab-content');
-            for (let i = 0; i < tabContents.length; i++) {
-                tabContents[i].classList.remove('active');
-            }
-            const tabButtons = document.getElementsByClassName('tab-button');
-            for (let i = 0; i < tabButtons.length; i++) {
-                tabButtons[i].classList.remove('active');
-            }
-            const targetTab = document.getElementById(tabName);
-            if (targetTab) {
-                targetTab.classList.add('active');
-            }
+        function saveProduct() {
+            const id = document.getElementById('modalProductId').value.trim();
+            const name = document.getElementById('modalProductName').value.trim();
+            const category = document.getElementById('modalProductCategory').value.trim();
+            const unit = document.getElementById('modalProductUnit').value.trim();
+            const price = parseFloat(document.getElementById('modalProductPrice').value);
             
-            if (tabName === 'analysis') {
-                updateAnalysis();
-            } else if (tabName === 'activity') {
-                displayActivityLog();
-            }
-            
-            // Find and activate the clicked button
-            const clickedButton = event?.currentTarget;
-            if (clickedButton) {
-                clickedButton.classList.add('active');
-            }
-        }
-
-        function updateUI() {
-            updateMonthDisplay();
-            displayProducts();
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-
-        function getLocationDisplayName(locationId) {
-            const location = locations.find(l => l.id === locationId);
-            return location ? location.name : locationId;
-        }
-
-        function formatMonthDisplay(month) {
-            const [year, monthNum] = month.split('-');
-            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                'July', 'August', 'September', 'October', 'November', 'December'];
-            return `${monthNames[parseInt(monthNum) - 1]} ${year}`;
-        }
-
-        // ==================== LOCATION FUNCTIONS ====================
-        function setupLocationSelector() {
-            const selector = document.getElementById('locationSelector');
-            if (!selector) return;
-            
-            selector.innerHTML = '';
-            
-            const userLocations = currentUser ? currentUser.locations : ['ostbahnhof', 'potsdam'];
-            
-            userLocations.forEach(locationId => {
-                const location = locations.find(l => l.id === locationId);
-                if (location && location.active) {
-                    const button = document.createElement('button');
-                    button.className = `location-btn ${locationId === currentLocation ? 'active' : ''}`;
-                    button.textContent = location.name;
-                    button.onclick = () => setLocation(locationId);
-                    selector.appendChild(button);
-                }
-            });
-            
-            document.getElementById('locationDisplay').textContent = getLocationDisplayName(currentLocation);
-            document.getElementById('analysisLocation').textContent = getLocationDisplayName(currentLocation);
-            document.getElementById('summaryLocation').textContent = getLocationDisplayName(currentLocation);
-        }
-
-        function setLocation(locationId) {
-            currentLocation = locationId;
-            setupLocationSelector();
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-        }
-
-        function updateLocationSelector() {
-            if (!currentUser) return;
-            
-            const selector = document.getElementById('locationSelector');
-            if (!selector) return;
-            
-            selector.innerHTML = '';
-            
-            currentUser.locations.forEach(locationId => {
-                const location = locations.find(l => l.id === locationId);
-                if (location && location.active) {
-                    const button = document.createElement('button');
-                    button.className = `location-btn ${locationId === currentLocation ? 'active' : ''}`;
-                    button.textContent = location.name;
-                    button.onclick = () => setLocation(locationId);
-                    selector.appendChild(button);
-                }
-            });
-        }
-
-        // ==================== MONTH/YEAR FUNCTIONS ====================
-        function setupYearMonthSelectors() {
-            const yearSelect = document.getElementById('yearSelect');
-            const monthSelect = document.getElementById('monthSelect');
-            
-            if (!yearSelect || !monthSelect) return;
-            
-            // Years: 2023-2030
-            yearSelect.innerHTML = '<option value="">Select Year</option>';
-            for (let year = 2023; year <= 2030; year++) {
-                const option = document.createElement('option');
-                option.value = year;
-                option.textContent = year;
-                yearSelect.appendChild(option);
-            }
-            
-            updateMonthOptions();
-        }
-
-        function updateMonthOptions() {
-            const yearSelect = document.getElementById('yearSelect');
-            const monthSelect = document.getElementById('monthSelect');
-            
-            if (!yearSelect || !monthSelect) return;
-            
-            const selectedYear = yearSelect.value;
-            monthSelect.innerHTML = '<option value="">Select Month</option>';
-            
-            if (selectedYear) {
-                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                    'July', 'August', 'September', 'October', 'November', 'December'];
-                
-                for (let i = 1; i <= 12; i++) {
-                    const option = document.createElement('option');
-                    option.value = `${selectedYear}-${i.toString().padStart(2, '0')}`;
-                    option.textContent = `${monthNames[i-1]} ${selectedYear}`;
-                    monthSelect.appendChild(option);
-                }
-            }
-        }
-
-        function setCurrentMonth() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = (now.getMonth() + 1).toString().padStart(2, '0');
-            currentMonth = `${year}-${month}`;
-            updateMonthDisplay();
-        }
-
-        function changeMonth() {
-            const monthSelect = document.getElementById('monthSelect');
-            if (monthSelect.value) {
-                currentMonth = monthSelect.value;
-                updateMonthDisplay();
-                displayCountingProducts();
-                updateSummary();
-                updateAnalysis();
-            }
-        }
-
-        function createNewMonth() {
-            const yearSelect = document.getElementById('yearSelect');
-            const monthSelect = document.getElementById('monthSelect');
-            
-            if (!yearSelect.value || !monthSelect.value) {
-                alert('Please select both year and month');
+            if (!id || !name || !category || !unit || isNaN(price)) {
+                alert('Please fill all fields correctly');
                 return;
             }
             
-            currentMonth = monthSelect.value;
-            updateMonthDisplay();
+            const existingProduct = products.find(p => p.id === id);
             
-            // Create empty monthly data entry
-            const key = `${currentLocation}|${currentMonth}`;
-            if (!monthlyData[key]) {
-                monthlyData[key] = {
-                    counts: {},
-                    created: new Date().toISOString(),
-                    status: 'open'
-                };
-                
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref(`monthly_data/${key}`).set(monthlyData[key]);
-                }
-                
-                saveToLocalStorage('monthlyInventoryData', monthlyData);
-            }
-            
-            displayCountingProducts();
-            updateSummary();
-            updateAnalysis();
-            
-            logActivity('month_create', {
-                location: currentLocation,
-                month: currentMonth
-            });
-            
-            alert(`New counting period created for ${formatMonthDisplay(currentMonth)} at ${getLocationDisplayName(currentLocation)}`);
-        }
-
-        function updateMonthDisplay() {
-            document.getElementById('currentPeriodDisplay').textContent = formatMonthDisplay(currentMonth);
-            
-            // Update counting status
-            const key = `${currentLocation}|${currentMonth}`;
-            const status = monthlyData[key]?.status || 'open';
-            document.getElementById('countingStatus').textContent = status === 'open' ? 'Open for Counting' : 'Closed';
-            
-            const statusBanner = document.getElementById('statusBanner');
-            if (status === 'closed') {
-                statusBanner.className = 'status-banner status-closed';
-                statusBanner.textContent = '⚠ Counting Period CLOSED - Read Only Mode';
-                document.getElementById('readonlyOverlay').style.display = 'flex';
+            if (existingProduct) {
+                existingProduct.name = name;
+                existingProduct.category = category;
+                existingProduct.unit = unit;
+                existingProduct.price = price;
+                alert('Product updated successfully');
             } else {
-                statusBanner.className = 'status-banner status-open';
-                statusBanner.textContent = '✓ Counting Period OPEN - You can modify quantities';
-                document.getElementById('readonlyOverlay').style.display = 'none';
+                const newProduct = { id, name, category, unit, price };
+                products.push(newProduct);
+                alert('Product added successfully');
             }
+            
+            closeModal('productModal');
+            displayProducts();
+            updateCategoryFilter();
+            
+            // Save to localStorage
+            saveToLocalStorage('inventoryProducts', products);
         }
 
-        // ==================== COUNTING DISPLAY FUNCTIONS ====================
+        // ==================== COUNTING FUNCTIONS ====================
         function displayCountingProducts() {
             const tbody = document.getElementById('countingList');
             if (!tbody) return;
@@ -2739,6 +2098,59 @@
             document.getElementById('totalCounted').textContent = totalCounted;
         }
 
+        function filterCountingProducts() {
+            displayCountingProducts();
+        }
+
+        function incrementCount(productId, increment = 1) {
+            if (isCountingClosed()) return;
+            
+            const key = `${currentLocation}|${currentMonth}`;
+            
+            if (!monthlyData[key]) {
+                monthlyData[key] = {
+                    counts: {},
+                    created: new Date().toISOString(),
+                    status: 'open'
+                };
+            }
+            
+            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
+            monthlyData[key].counts[productId] = currentCount + increment;
+            
+            // Save to localStorage
+            saveToLocalStorage('monthlyInventoryData', monthlyData);
+            
+            displayCountingProducts();
+            updateSummary();
+            updateAnalysis();
+        }
+
+        function decrementCount(productId, decrement = 1) {
+            if (isCountingClosed()) return;
+            
+            const key = `${currentLocation}|${currentMonth}`;
+            
+            if (!monthlyData[key]) {
+                monthlyData[key] = {
+                    counts: {},
+                    created: new Date().toISOString(),
+                    status: 'open'
+                };
+            }
+            
+            const currentCount = parseFloat(monthlyData[key].counts[productId]) || 0;
+            const newCount = Math.max(0, currentCount - decrement);
+            monthlyData[key].counts[productId] = newCount;
+            
+            // Save to localStorage
+            saveToLocalStorage('monthlyInventoryData', monthlyData);
+            
+            displayCountingProducts();
+            updateSummary();
+            updateAnalysis();
+        }
+
         function setManualCount(productId, value) {
             if (isCountingClosed()) return;
             
@@ -2753,28 +2165,10 @@
                 };
             }
             
-            const oldCount = parseFloat(monthlyData[key].counts[productId]) || 0;
-            const product = products.find(p => p.id === productId);
-            
             monthlyData[key].counts[productId] = count;
             
-            // Save to Firebase
-            saveCountToFirebase({
-                location: currentLocation,
-                month: currentMonth,
-                productId: productId,
-                count: count
-            });
-            
-            logActivity('count_update', {
-                productId: productId,
-                productName: product ? product.name : 'Unknown',
-                change: count - oldCount,
-                previousCount: oldCount,
-                newCount: count,
-                location: currentLocation,
-                month: currentMonth
-            });
+            // Save to localStorage
+            saveToLocalStorage('monthlyInventoryData', monthlyData);
             
             updateSummary();
             updateAnalysis();
@@ -2797,10 +2191,6 @@
         function isCountingClosed() {
             const key = `${currentLocation}|${currentMonth}`;
             return monthlyData[key]?.status === 'closed';
-        }
-
-        function formatDecimal(value) {
-            return parseFloat(value).toFixed(2);
         }
 
         // ==================== SUMMARY FUNCTIONS ====================
@@ -2863,189 +2253,11 @@
             const key = `${currentLocation}|${currentMonth}`;
             if (monthlyData[key]) {
                 monthlyData[key].counts = {};
-                
-                // Save to Firebase
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref(`monthly_data/${key}/counts`).remove();
-                }
-                
                 saveToLocalStorage('monthlyInventoryData', monthlyData);
-                
-                logActivity('count_reset', {
-                    location: currentLocation,
-                    month: currentMonth
-                });
-                
                 displayCountingProducts();
                 updateSummary();
                 updateAnalysis();
                 alert('All counts have been reset');
-            }
-        }
-
-        // ==================== FILTER FUNCTIONS ====================
-        function filterProducts() {
-            displayProducts();
-        }
-
-        function filterCountingProducts() {
-            displayCountingProducts();
-        }
-
-        // ==================== ARCHIVE FUNCTIONS ====================
-        function displayArchive() {
-            const tbody = document.getElementById('archiveList');
-            if (!tbody) return;
-            
-            tbody.innerHTML = '';
-            
-            const locationFilter = document.getElementById('archiveLocationFilter')?.value;
-            const yearFilter = document.getElementById('archiveYearFilter')?.value;
-            
-            // Update location filter options
-            const locationFilterSelect = document.getElementById('archiveLocationFilter');
-            locationFilterSelect.innerHTML = '<option value="all">All Locations</option>';
-            const allLocations = [...new Set(Object.keys(monthlyData).map(key => key.split('|')[0]))];
-            allLocations.forEach(loc => {
-                const option = document.createElement('option');
-                option.value = loc;
-                option.textContent = getLocationDisplayName(loc);
-                locationFilterSelect.appendChild(option);
-            });
-            
-            // Update year filter options
-            const yearFilterSelect = document.getElementById('archiveYearFilter');
-            yearFilterSelect.innerHTML = '<option value="all">All Years</option>';
-            const allYears = [...new Set(Object.keys(monthlyData).map(key => {
-                const month = key.split('|')[1];
-                return month ? month.split('-')[0] : null;
-            }).filter(year => year))];
-            allYears.sort().reverse().forEach(year => {
-                const option = document.createElement('option');
-                option.value = year;
-                option.textContent = year;
-                yearFilterSelect.appendChild(option);
-            });
-            
-            // Filter and display
-            const archiveEntries = [];
-            
-            Object.keys(monthlyData).forEach(key => {
-                const [location, month] = key.split('|');
-                
-                // Apply filters
-                if (locationFilter && locationFilter !== 'all' && location !== locationFilter) return;
-                if (yearFilter && yearFilter !== 'all' && month && !month.startsWith(yearFilter)) return;
-                
-                const data = monthlyData[key];
-                const counts = data.counts || {};
-                
-                // Calculate totals
-                let totalItems = 0;
-                let totalValue = 0;
-                
-                Object.keys(counts).forEach(productId => {
-                    const product = products.find(p => p.id === productId);
-                    if (product) {
-                        const count = parseFloat(counts[productId]) || 0;
-                        if (count > 0) {
-                            totalItems++;
-                            totalValue += count * product.price;
-                        }
-                    }
-                });
-                
-                archiveEntries.push({
-                    key,
-                    location,
-                    month,
-                    totalItems,
-                    totalValue,
-                    status: data.status || 'open',
-                    created: data.created
-                });
-            });
-            
-            // Sort by date (newest first)
-            archiveEntries.sort((a, b) => new Date(b.created) - new Date(a.created));
-            
-            if (archiveEntries.length === 0) {
-                const row = tbody.insertRow();
-                row.innerHTML = `<td colspan="6" style="text-align: center; padding: 20px; color: #666;">No archive data found</td>`;
-                return;
-            }
-            
-            archiveEntries.forEach(entry => {
-                const row = tbody.insertRow();
-                const statusClass = entry.status === 'closed' ? 'status-closed' : 'status-open';
-                
-                row.innerHTML = `
-                    <td>${formatMonthDisplay(entry.month)}</td>
-                    <td>${getLocationDisplayName(entry.location)}</td>
-                    <td>${entry.totalItems}</td>
-                    <td>€${entry.totalValue.toFixed(2)}</td>
-                    <td><span class="${statusClass}" style="padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">
-                        ${entry.status === 'closed' ? 'Closed' : 'Open'}
-                    </span></td>
-                    <td>
-                        <button class="edit-btn" onclick="viewArchive('${entry.key}')">View</button>
-                        ${entry.status === 'open' ? 
-                            `<button class="admin-btn" onclick="closeCountingPeriod('${entry.key}')">Close</button>` : 
-                            `<button class="quantity-btn" onclick="reopenCountingPeriod('${entry.key}')">Reopen</button>`
-                        }
-                    </td>
-                `;
-            });
-        }
-
-        function viewArchive(key) {
-            const [location, month] = key.split('|');
-            const oldLocation = currentLocation;
-            const oldMonth = currentMonth;
-            
-            currentLocation = location;
-            currentMonth = month;
-            
-            // Switch to counting tab
-            openTab('counting');
-            
-            alert(`Viewing archive: ${formatMonthDisplay(month)} - ${getLocationDisplayName(location)}\n\nNote: This is view-only mode.`);
-            
-            // Restore original location/month after 5 seconds
-            setTimeout(() => {
-                currentLocation = oldLocation;
-                currentMonth = oldMonth;
-                updateMonthDisplay();
-                setupLocationSelector();
-                displayCountingProducts();
-            }, 10000);
-        }
-
-        function closeCountingPeriod(key) {
-            if (confirm('Are you sure you want to close this counting period? This will make it read-only.')) {
-                monthlyData[key].status = 'closed';
-                
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref(`monthly_data/${key}/status`).set('closed');
-                }
-                
-                saveToLocalStorage('monthlyInventoryData', monthlyData);
-                displayArchive();
-                alert('Counting period closed successfully');
-            }
-        }
-
-        function reopenCountingPeriod(key) {
-            if (confirm('Are you sure you want to reopen this counting period?')) {
-                monthlyData[key].status = 'open';
-                
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref(`monthly_data/${key}/status`).set('open');
-                }
-                
-                saveToLocalStorage('monthlyInventoryData', monthlyData);
-                displayArchive();
-                alert('Counting period reopened successfully');
             }
         }
 
@@ -3147,368 +2359,105 @@
                     }
                 });
             }
+        }
+
+        // ==================== ARCHIVE FUNCTIONS ====================
+        function displayArchive() {
+            const tbody = document.getElementById('archiveList');
+            if (!tbody) return;
             
-            // Top products chart
-            const key = `${currentLocation}|${currentMonth}`;
-            const counts = monthlyData[key]?.counts || {};
-            const productValues = [];
+            tbody.innerHTML = '';
             
-            products.forEach(product => {
-                const count = parseFloat(counts[product.id]) || 0;
-                if (count > 0) {
-                    productValues.push({
-                        name: product.name,
-                        value: count * product.price,
-                        id: product.id
-                    });
-                }
-            });
+            const archiveEntries = [];
             
-            // Sort by value (highest first) and take top 10
-            productValues.sort((a, b) => b.value - a.value);
-            const topProducts = productValues.slice(0, 10);
-            
-            const productsCtx = document.getElementById('topProductsChart')?.getContext('2d');
-            if (productsCtx && topProducts.length > 0) {
-                const labels = topProducts.map(p => p.name.length > 20 ? p.name.substring(0, 20) + '...' : p.name);
-                const data = topProducts.map(p => p.value);
+            Object.keys(monthlyData).forEach(key => {
+                const [location, month] = key.split('|');
+                const data = monthlyData[key];
+                const counts = data.counts || {};
                 
-                // Destroy existing chart if it exists
-                if (window.productsChart instanceof Chart) {
-                    window.productsChart.destroy();
-                }
+                // Calculate totals
+                let totalItems = 0;
+                let totalValue = 0;
                 
-                window.productsChart = new Chart(productsCtx, {
-                    type: 'horizontalBar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Value (€)',
-                            data: data,
-                            backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                            borderColor: 'rgba(75, 192, 192, 1)',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            x: {
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
-                                        return '€' + value.toFixed(2);
-                                    }
-                                }
-                            }
+                Object.keys(counts).forEach(productId => {
+                    const product = products.find(p => p.id === productId);
+                    if (product) {
+                        const count = parseFloat(counts[productId]) || 0;
+                        if (count > 0) {
+                            totalItems++;
+                            totalValue += count * product.price;
                         }
                     }
                 });
-            }
-        }
-
-        // ==================== DATA EXPORT ====================
-        function exportAllData() {
-            const data = {
-                products: products,
-                users: users.filter(u => u.username !== 'admin'), // Don't export admin password
-                locations: locations,
-                monthlyData: monthlyData,
-                activityLogs: activityLogs,
-                exportDate: new Date().toISOString(),
-                exportLocation: currentLocation,
-                exportMonth: currentMonth
-            };
-            
-            const dataStr = JSON.stringify(data, null, 2);
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            
-            const exportFileDefaultName = `inventory_export_${new Date().toISOString().split('T')[0]}.json`;
-            
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', exportFileDefaultName);
-            linkElement.click();
-            
-            logActivity('data_export', {
-                filename: exportFileDefaultName,
-                location: currentLocation,
-                month: currentMonth
+                
+                archiveEntries.push({
+                    key,
+                    location,
+                    month,
+                    totalItems,
+                    totalValue,
+                    status: data.status || 'open',
+                    created: data.created
+                });
             });
             
-            alert(`Data exported successfully as ${exportFileDefaultName}`);
-        }
-
-        function exportToExcel() {
-            const key = `${currentLocation}|${currentMonth}`;
-            const counts = monthlyData[key]?.counts || {};
+            // Sort by date (newest first)
+            archiveEntries.sort((a, b) => new Date(b.created) - new Date(a.created));
             
-            let csv = 'Product ID,Product Name,Category,Unit,Price,Quantity,Total Value\n';
-            
-            products.forEach(product => {
-                const count = parseFloat(counts[product.id]) || 0;
-                if (count > 0) {
-                    const totalValue = count * product.price;
-                    csv += `"${product.id}","${product.name}","${product.category}","${product.unit}",${product.price},${count},${totalValue}\n`;
-                }
-            });
-            
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            
-            link.setAttribute("href", url);
-            link.setAttribute("download", `inventory_${currentLocation}_${currentMonth}.csv`);
-            link.style.visibility = 'hidden';
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            alert(`CSV exported successfully for ${formatMonthDisplay(currentMonth)} - ${getLocationDisplayName(currentLocation)}`);
-        }
-
-        // ==================== ADMIN FUNCTIONS ====================
-        function showAddLocationForm() {
-            document.getElementById('locationModalTitle').textContent = 'Add New Location';
-            document.getElementById('modalLocationName').value = '';
-            document.getElementById('modalLocationId').value = '';
-            document.getElementById('locationModal').style.display = 'flex';
-        }
-
-        function saveLocation() {
-            const name = document.getElementById('modalLocationName').value.trim();
-            const id = document.getElementById('modalLocationId').value.trim().toLowerCase();
-            
-            if (!name || !id) {
-                alert('Please fill all fields');
+            if (archiveEntries.length === 0) {
+                const row = tbody.insertRow();
+                row.innerHTML = `<td colspan="6" style="text-align: center; padding: 20px; color: #666;">No archive data found</td>`;
                 return;
             }
             
-            const existingLocation = locations.find(l => l.id === id);
-            
-            if (existingLocation) {
-                existingLocation.name = name;
-                alert('Location updated successfully');
-            } else {
-                locations.push({ id, name, active: true });
-                alert('Location added successfully');
-            }
-            
-            // Save to Firebase
-            if (isOnline && firebaseInitialized) {
-                firebase.database().ref(`locations/${id}`).set({
-                    name: name,
-                    active: true
-                });
-            }
-            
-            saveToLocalStorage('inventoryLocations', locations);
-            closeModal('locationModal');
-            
-            if (existingLocation) {
-                logActivity('location_edit', { locationId: id, locationName: name });
-            } else {
-                logActivity('location_add', { locationId: id, locationName: name });
-            }
-            
-            updateLocationSelector();
-            displayAdminLocations();
-        }
-
-        function showUserManagement() {
-            document.getElementById('userManagementSection').style.display = 'block';
-            document.getElementById('locationManagementSection').style.display = 'none';
-            displayUsers();
-        }
-
-        function showLocationManagement() {
-            document.getElementById('locationManagementSection').style.display = 'block';
-            document.getElementById('userManagementSection').style.display = 'none';
-            displayAdminLocations();
-        }
-
-        function displayAdminLocations() {
-            const tbody = document.getElementById('adminLocationList');
-            if (!tbody) return;
-            
-            tbody.innerHTML = '';
-            
-            locations.forEach(location => {
+            archiveEntries.forEach(entry => {
                 const row = tbody.insertRow();
+                const statusClass = entry.status === 'closed' ? 'status-closed' : 'status-open';
+                
                 row.innerHTML = `
-                    <td>${location.name}</td>
-                    <td>${location.id}</td>
-                    <td>${location.active ? 'Active' : 'Inactive'}</td>
+                    <td>${formatMonthDisplay(entry.month)}</td>
+                    <td>${getLocationDisplayName(entry.location)}</td>
+                    <td>${entry.totalItems}</td>
+                    <td>€${entry.totalValue.toFixed(2)}</td>
+                    <td><span class="${statusClass}" style="padding: 3px 8px; border-radius: 12px; font-size: 0.8rem;">
+                        ${entry.status === 'closed' ? 'Closed' : 'Open'}
+                    </span></td>
                     <td>
-                        <button class="edit-btn" onclick="toggleLocation('${location.id}')">
-                            ${location.active ? 'Deactivate' : 'Activate'}
-                        </button>
-                        ${location.id !== 'ostbahnhof' && location.id !== 'potsdam' ? 
-                            `<button class="admin-btn" onclick="deleteLocation('${location.id}')">Delete</button>` : 
-                            ''
-                        }
+                        <button class="edit-btn" onclick="viewArchive('${entry.key}')">View</button>
                     </td>
                 `;
             });
         }
 
-        function toggleLocation(locationId) {
-            const location = locations.find(l => l.id === locationId);
-            if (location) {
-                location.active = !location.active;
-                
-                // Save to Firebase
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref(`locations/${locationId}/active`).set(location.active);
-                }
-                
-                saveToLocalStorage('inventoryLocations', locations);
-                displayAdminLocations();
-                updateLocationSelector();
-                
-                alert(`Location ${location.active ? 'activated' : 'deactivated'} successfully`);
-            }
+        function viewArchive(key) {
+            const [location, month] = key.split('|');
+            const oldLocation = currentLocation;
+            const oldMonth = currentMonth;
+            
+            currentLocation = location;
+            currentMonth = month;
+            
+            openTab('counting');
+            
+            alert(`Viewing archive: ${formatMonthDisplay(month)} - ${getLocationDisplayName(location)}`);
+            
+            // Restore original location/month after 10 seconds
+            setTimeout(() => {
+                currentLocation = oldLocation;
+                currentMonth = oldMonth;
+                updateMonthDisplay();
+                setupLocationSelector();
+                displayCountingProducts();
+            }, 10000);
         }
 
-        function deleteLocation(locationId) {
-            if (locationId === 'ostbahnhof' || locationId === 'potsdam') {
-                alert('Cannot delete default locations');
-                return;
-            }
-            
-            if (confirm(`Are you sure you want to delete location ${locationId}?`)) {
-                locations = locations.filter(l => l.id !== locationId);
-                
-                // Remove from Firebase
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref(`locations/${locationId}`).remove();
-                }
-                
-                saveToLocalStorage('inventoryLocations', locations);
-                displayAdminLocations();
-                updateLocationSelector();
-                
-                alert('Location deleted successfully');
-            }
-        }
-
-        function filterUsers() {
-            const searchTerm = document.getElementById('userSearch')?.value.toLowerCase() || '';
-            const tbody = document.getElementById('userList');
-            
-            if (!tbody) return;
-            
-            tbody.innerHTML = '';
-            
-            const filteredUsers = users.filter(user => 
-                user.username.toLowerCase().includes(searchTerm) ||
-                user.role.toLowerCase().includes(searchTerm)
-            );
-            
-            filteredUsers.forEach(user => {
-                const row = tbody.insertRow();
-                row.innerHTML = `
-                    <td>${user.username}</td>
-                    <td>${user.role === 'admin' ? 'Administrator' : 'Inventory User'}</td>
-                    <td>${user.locations.map(l => getLocationDisplayName(l)).join(', ')}</td>
-                    <td>${user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}</td>
-                    <td>
-                        <button class="edit-btn" onclick="editUser('${user.username}')">Edit</button>
-                        ${user.username !== 'admin' ? `<button class="admin-btn" onclick="deleteUser('${user.username}')">Delete</button>` : ''}
-                    </td>
-                `;
-            });
-        }
-
-        function editUser(username) {
-            const user = users.find(u => u.username === username);
-            if (user) {
-                document.getElementById('userModalTitle').textContent = 'Edit User';
-                document.getElementById('modalUsername').value = user.username;
-                document.getElementById('modalUsername').disabled = true;
-                document.getElementById('modalPassword').value = user.password;
-                document.getElementById('modalUserRole').value = user.role;
-                
-                const locationAccessList = document.getElementById('locationAccessList');
-                locationAccessList.innerHTML = '';
-                
-                locations.filter(l => l.active).forEach(location => {
-                    const div = document.createElement('div');
-                    div.className = 'location-checkbox';
-                    
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.value = location.id;
-                    checkbox.checked = user.locations.includes(location.id);
-                    checkbox.id = `loc-edit-${location.id}`;
-                    
-                    const label = document.createElement('label');
-                    label.textContent = location.name;
-                    label.htmlFor = `loc-edit-${location.id}`;
-                    
-                    div.appendChild(checkbox);
-                    div.appendChild(label);
-                    locationAccessList.appendChild(div);
-                });
-                
-                document.getElementById('userModal').style.display = 'flex';
-            }
-        }
-
-        function deleteUser(username) {
-            if (username === 'admin') {
-                alert('Cannot delete admin user');
-                return;
-            }
-            
-            if (confirm(`Are you sure you want to delete user ${username}?`)) {
-                users = users.filter(u => u.username !== username);
-                
-                // Remove from Firebase
-                const userToDelete = users.find(u => u.username === username);
-                if (isOnline && firebaseInitialized && userToDelete?.id) {
-                    firebase.database().ref(`users/${userToDelete.id}`).remove();
-                }
-                
-                saveToLocalStorage('inventoryUsers', users);
-                displayUsers();
-                alert('User deleted successfully');
-            }
-        }
-
-        function exportActivityLog() {
-            const dataStr = JSON.stringify(activityLogs, null, 2);
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            
-            const exportFileDefaultName = `activity_log_${new Date().toISOString().split('T')[0]}.json`;
-            
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', exportFileDefaultName);
-            linkElement.click();
-            
-            alert(`Activity log exported successfully as ${exportFileDefaultName}`);
-        }
-
-        function clearActivityLog() {
-            if (confirm('Are you sure you want to clear all activity logs? This cannot be undone.')) {
-                activityLogs = [];
-                
-                if (isOnline && firebaseInitialized) {
-                    firebase.database().ref('activity_logs').remove();
-                }
-                
-                saveToLocalStorage('inventoryActivityLogs', activityLogs);
-                displayActivityLog();
-                alert('Activity log cleared successfully');
-            }
+        // ==================== UI UPDATE ====================
+        function updateUI() {
+            updateMonthDisplay();
+            displayProducts();
+            displayCountingProducts();
+            updateSummary();
+            updateAnalysis();
         }
 
         // ==================== INITIALIZE ====================
